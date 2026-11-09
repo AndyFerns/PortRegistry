@@ -2,9 +2,12 @@
 
 import asyncio
 import os
+import subprocess
+import sys
 import threading
 import time
 
+import psutil
 import pytest
 
 from portregistry.core.events import EventBus
@@ -147,6 +150,24 @@ def test_stale_state_file_is_ignored_and_replaced(tmp_path):
 
 def test_current_process_state_is_alive():
     assert state_process_alive(current_process_state("127.0.0.1", 1, "x"))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="zombie processes are POSIX-only")
+def test_exited_unreaped_child_is_not_alive():
+    """A daemon that exited but was not yet reaped by its parent must count as stopped."""
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc = psutil.Process(child.pid)
+    state = {"pid": child.pid, "create_time": proc.create_time()}
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            if proc.status() == psutil.STATUS_ZOMBIE:
+                break
+        except psutil.NoSuchProcess:
+            break
+        time.sleep(0.05)
+    assert not state_process_alive(state)
+    child.poll()  # already reaped by state_process_alive; must not raise
 
 
 # ------------------------------------------------------------------- event bus

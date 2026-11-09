@@ -40,11 +40,30 @@ def state_process_alive(state: dict[str, Any] | None) -> bool:
         recorded = float(state["create_time"])
     except (KeyError, TypeError, ValueError):
         return False
+    _reap_if_child(pid)
     try:
         proc = psutil.Process(pid)
-        return abs(proc.create_time() - recorded) < 0.01
+        if abs(proc.create_time() - recorded) >= 0.01:
+            return False
+        # An exited-but-unreaped (zombie) process still has its PID and creation
+        # time on POSIX; it is not a running daemon.
+        return proc.status() != psutil.STATUS_ZOMBIE
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
         return False
+
+
+def _reap_if_child(pid: int) -> None:
+    """Reap ``pid`` if it is an exited child of this process (POSIX only).
+
+    A daemon started by this process (e.g. tests, or a long-lived CLI process)
+    would otherwise linger as a zombie after shutdown.
+    """
+    if sys.platform == "win32":
+        return
+    try:
+        os.waitpid(pid, os.WNOHANG)
+    except (ChildProcessError, OSError):
+        pass  # not our child, or already reaped
 
 
 def _try_lock(handle: IO[bytes]) -> bool:

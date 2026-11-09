@@ -22,21 +22,30 @@ IMAGE = "nginx:alpine"
 LABEL = "portregistry-test"
 
 
+def _unavailable(reason: str):
+    """Skip, or fail when the environment promises a usable Linux Docker engine."""
+    if os.environ.get("PORTREGISTRY_REQUIRE_DOCKER") == "1":
+        pytest.fail(f"PORTREGISTRY_REQUIRE_DOCKER=1 but {reason}")
+    pytest.skip(reason)
+
+
 def _docker_client():
-    reason = None
     try:
         import docker
 
         client = docker.from_env(timeout=10)
         client.ping()
-        return client
     except ImportError:
-        reason = "Docker SDK not installed (pip install 'portregistry[docker]')"
+        _unavailable("Docker SDK not installed (pip install 'portregistry[docker]')")
     except Exception as exc:
-        reason = f"Docker daemon not reachable: {exc}"
-    if os.environ.get("PORTREGISTRY_REQUIRE_DOCKER") == "1":
-        pytest.fail(f"PORTREGISTRY_REQUIRE_DOCKER=1 but {reason}")
-    pytest.skip(reason)
+        _unavailable(f"Docker daemon not reachable: {exc}")
+    # The test image is Linux-only. GitHub's Windows runners (and Docker Desktop in
+    # Windows-containers mode) expose an engine that cannot run it.
+    os_type = str((client.info() or {}).get("OSType", "")).lower()
+    if os_type != "linux":
+        client.close()
+        _unavailable(f"Docker engine runs {os_type or 'unknown'} containers; {IMAGE} needs Linux")
+    return client
 
 
 def _free_port() -> int:
@@ -62,7 +71,10 @@ def running_container(docker_client):
     try:
         docker_client.images.get(IMAGE)
     except Exception:
-        docker_client.images.pull(IMAGE)
+        try:
+            docker_client.images.pull(IMAGE)
+        except Exception as exc:
+            _unavailable(f"cannot pull test image {IMAGE}: {exc}")
     host_port = _free_port()
     name = f"portregistry-test-{uuid.uuid4().hex[:8]}"
     container = docker_client.containers.run(
