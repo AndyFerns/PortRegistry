@@ -1,0 +1,21 @@
+{% load pr_format %}
+<div class="finding {{ conflict.severity }}">
+  <div class="actions">
+    <span class="badge {{ conflict.severity|sev_class }}">{{ conflict.severity }}</span>
+    <span class="badge">{{ conflict.certainty }}</span>
+    <span class="badge">{{ conflict.type }}</span>
+    <span class="title">{{ conflict.title }}</span>
+  </div>
+  <div class="small" style="margin-top:4px">{{ conflict.explanation }}</div>
+  {% if not compact %}
+  <div class="small muted" style="margin-top:4px">
+    First seen {{ conflict.first_seen|ago }}
+    {% if conflict.reservation_id %} · <a href="/reservations/{{ conflict.reservation_id }}/">reservation #{{ conflict.reservation_id }}</a>{% endif %}
+    {% if conflict.related_reservation_id %} · <a href="/reservations/{{ conflict.related_reservation_id }}/">reservation #{{ conflict.related_reservation_id }}</a>{% endif %}
+    {% if conflict.service_id %} · <a href="/services/{{ conflict.service_id }}/">service</a>{% endif %}
+    {% if conflict.socket_id %} · <a href="/ports/{{ conflict.socket_id }}/">endpoint</a>{% endif %}
+    {% if conflict.process_id %} · <a href="/processes/{{ conflict.process_id }}/">process</a>{% endif %}
+  </div>
+  <details><summary>Evidence</summary><pre>{{ conflict.evidence|pretty_json }}</pre></details>
+  {% endif %}
+</div>

@@ -1,0 +1,5 @@
+{% for conflict in rows %}
+  {% include "portregistry/partials/conflict_card.html" with conflict=conflict %}
+{% empty %}
+  <div class="card empty">No {% if not show_info %}actionable {% endif %}conflicts.{% if not show_info and info_count %} {{ info_count }} informational finding{{ info_count|pluralize }} (e.g. unregistered listeners) — <a href="?info=1">show them</a>.{% endif %}</div>
+{% endfor %}

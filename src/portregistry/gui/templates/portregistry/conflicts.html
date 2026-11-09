@@ -1,0 +1,15 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Conflicts{% endblock %}
+{% block heading %}Conflicts{% endblock %}
+{% block content %}
+<div class="filters">
+  <div class="actions">
+    <a class="btn small {% if not show_info %}primary{% endif %}" href="?">Actionable</a>
+    <a class="btn small {% if show_info %}primary{% endif %}" href="?info=1">Include informational ({{ info_count }})</a>
+  </div>
+  <span class="small muted"><strong>Definite</strong>: overlap is certain under known address-family semantics. <strong>Potential</strong>: depends on OS behaviour (e.g. IPv6 dual-stack) or incomplete discovery.</span>
+</div>
+<div id="conflicts-list" hx-get="/conflicts/{% if show_info %}?info=1{% endif %}" hx-trigger="sse:conflicts, sse:hello" hx-swap="innerHTML">
+  {% include "portregistry/partials/conflicts_list.html" %}
+</div>
+{% endblock %}
