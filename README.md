@@ -15,26 +15,7 @@ It has three interfaces, all backed by one local daemon:
 - a **Textual TUI** (works over SSH),
 - a **Typer CLI**.
 
-> Status: first implementation pass (v0.1.0). See [Known limitations](#known-limitations) for what has and has not been verified.
-
----
-
-## Contents
-
-- [Architecture](#architecture)
-- [What works](#what-works)
-- [Installation](#installation)
-- [Running the daemon](#running-the-daemon)
-- [Web GUI](#web-gui)
-- [Terminal UI](#terminal-ui)
-- [CLI examples](#cli-examples)
-- [Data and configuration locations](#data-and-configuration-locations)
-- [Permissions and visibility](#permissions-and-visibility)
-- [Docker: setup and security caveats](#docker-setup-and-security-caveats)
-- [Conflict model](#conflict-model)
-- [End-to-end demo](#end-to-end-demo)
-- [Known limitations](#known-limitations)
-- [Development](#development)
+> Status: v0.2.0 (usability release on top of the first implementation pass). See [Known limitations](#known-limitations) for what has and has not been verified.
 
 ---
 
@@ -42,7 +23,19 @@ It has three interfaces, all backed by one local daemon:
 
 **Architectural rule:** one daemon process owns discovery, scheduling, application logic, event processing and every SQLite write. The GUI, TUI and CLI are clients: none of them scans the system or opens the database.
 
-```
+**Interfaces.**
+
+- **GUI:** dashboard, ports explorer, endpoint and process detail, services, reservations (with a live availability check), conflicts, history, containers, machine and daemon status. Pages update live over SSE.
+
+- **TUI:** dashboard, ports (with search), services, reservations, conflicts, machines, history and settings, plus details and forms.
+
+![TUI](/docs/assets/tui.png)
+
+- **CLI:** every workflow, with table, JSON and CSV output.
+
+![CLI](/docs/assets/cli.png)
+
+```text
  Browser (GUI) ──┐   session + CSRF
  Textual TUI  ───┼── HTTP/JSON + SSE ──► PortRegistry daemon (one process, one uvicorn worker)
  Typer CLI    ───┘   bearer token        │
@@ -54,7 +47,7 @@ It has three interfaces, all backed by one local daemon:
 ```
 
 | Package | Responsibility |
-|---|---|
+| --- | --- |
 | `portregistry.core` | Pure types, address/overlap semantics, identity, event bus, application container (no Django). |
 | `portregistry.discovery` | psutil and Docker providers plus normalizers. They collect data only and never touch the database. |
 | `portregistry.services` | The only code that writes to the database: reconciliation, registry, reservations, the conflict engine (pure) and its persistence, history, queries. |
@@ -131,12 +124,6 @@ It also includes an event listener that reconnects with backoff. When Docker is 
 - Detached start, foreground run, and graceful shutdown (SIGINT/SIGTERM or the API).
 - Restarts preserve all data.
 
-**Interfaces.**
-
-- **GUI:** dashboard, ports explorer, endpoint and process detail, services, reservations (with a live availability check), conflicts, history, containers, machine and daemon status. Pages update live over SSE.
-- **TUI:** dashboard, ports (with search), services, reservations, conflicts, machines, history and settings, plus details and forms.
-- **CLI:** every workflow, with table, JSON and CSV output.
-
 ---
 
 ## Installation
@@ -160,6 +147,23 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[docker]"        # or: pip install -e .
 ```
+
+**With pipx** (isolated, puts `portregistry` on your PATH):
+
+```bash
+pipx install ".[docker]"          # from the repository root
+pipx run --spec . portregistry version
+```
+
+**Standalone bundles:** CI builds one-folder PyInstaller bundles for Windows, Linux and macOS (`portregistry-<OS>` artifacts of the `binaries` job). Unzip and run `portregistry` (or `portregistry.exe`); no Python install is needed. To build one locally:
+
+```bash
+pip install -e ".[docker,binary]"     # add ,tray on Windows/macOS for the tray icon
+pyinstaller --noconfirm --clean packaging/pyinstaller/portregistry.spec
+dist/portregistry/portregistry version
+```
+
+Optional extras: `docker` (Docker discovery), `tray` (system tray icon: pystray + Pillow), `binary` (PyInstaller).
 
 For development, which adds pytest, pytest-django, ruff, mypy and build:
 
@@ -288,6 +292,113 @@ Exit codes:
 
 ---
 
+## Everyday tools (v0.2)
+
+```bash
+portregistry who 8080                  # owner, project, label, Docker mapping, reservations, conflicts
+portregistry free                      # 5 free TCP ports in 3000-9999 (not observed, not reserved, not Docker-published)
+portregistry free --range 5000-5999 --protocol udp --count 3
+portregistry free --reserve --service webapp   # find and reserve in one step
+portregistry adopt 3000                # register the process on port 3000 as a service (pre-filled, asks to confirm)
+portregistry adopt 3000 --name shop --yes
+portregistry timeline 8080 --days 7    # who held port 8080 over the last week (text bars)
+portregistry ports --watch             # live table: new endpoints green, closed ones red
+portregistry ports --group project     # or --group process
+```
+
+- **Labels:** about 150 well-known and common development ports get a label (5432 PostgreSQL, 5173 Vite, 9229 Node inspector...). Labels are hints; they never decide ownership.
+- **Projects:** a process's working directory is walked up (stat only, at most 12 levels) to find a project root (`.git`, `pyproject.toml`, `package.json`, `compose.yaml`...). Docker containers use their Compose project label.
+- **Adopt** pre-fills name (project, Compose service or process), expected executable, working directory and category, and reserves the process's endpoints. In the GUI: **Register as service** on any port or process page. In the TUI: `s` on the Ports tab.
+- **Free-port checks** also do a quick test bind on this machine by default, which catches sockets discovery could not see. Results are advisory; reserve a port to record intent. The OS ephemeral range and ports below 1024 are skipped unless you include them.
+- **GUI:** "Suggest free port" in the reservation form, a Timeline page, ports grouping, and saved filters on Ports and History. **TUI:** a free-port button in the reservation form.
+
+## Reducing noise
+
+The Conflicts page and History used to fill up with short-lived client sockets. v0.2 separates real changes from churn:
+
+- **Ephemeral UDP** sockets (the OS dynamic range: 49152-65535 on Windows/macOS, `ip_local_port_range` on Linux) are not reported as unregistered listeners, and their history events are marked as *noise*.
+- **Flapping:** an endpoint or process that disappears within `flap_window_seconds` (120 s) of appearing has both events marked as noise.
+- **Ignore rules** ("known" endpoints) match by process name glob, executable glob, protocol, port range and address. Each rule can hide unregistered-listener findings, history churn, or both. **Conflicts that involve a reservation are never hidden**, because a reservation is explicit intent.
+  - GUI: **Mark as known** on a port or process page; manage rules under **Ignore rules**.
+  - CLI: `portregistry ignore add --name chrome --process "chrome*" --protocol udp`, `portregistry ignore known <endpoint-id>`, `portregistry ignore list|toggle|remove`.
+  - TUI: `k` on the Ports tab.
+- Noise is **hidden, not deleted**: History shows "N short-lived events hidden" with a toggle (`history --noise` in the CLI, `z` in the TUI). Noise events are purged after `noise_retention_days` (3).
+
+## Manifests: share and restore port assignments
+
+Commit a `portregistry.toml` to a repository so a team agrees on ports:
+
+```toml
+version = 1
+
+[[service]]
+name = "web"
+expected_executable = "node"
+expected_working_directory = "."      # relative to this file
+
+  [[service.port]]
+  port = 3000                         # protocol defaults to tcp, address to *
+
+[[reservation]]                       # reservations without a service
+port = 5432
+description = "Shared Postgres"
+```
+
+```bash
+portregistry init                       # scaffold from this directory's project (registered services + running processes)
+portregistry apply --dry-run            # show creates/updates/unchanged
+portregistry apply                      # apply (one transaction; validated first)
+portregistry apply --prune              # also release/delete items this manifest created earlier but no longer lists
+portregistry export -f backup.toml      # full registry backup; restore with `portregistry apply backup.toml`
+portregistry export --format json --service web
+```
+
+Services match by name and reservations by (service, protocol, port, address). Keys omitted from the manifest are left unchanged. `--prune` only touches items that were created or claimed by the same manifest file; nothing else is ever pruned.
+
+## Alerts and notifications
+
+- **Webhooks** (opt-in; nothing is sent unless configured). Add to `config.toml`, then restart the daemon:
+
+  ```toml
+  [[alerts.webhook]]
+  url = "http://127.0.0.1:9000/portregistry"
+  min_severity = "warning"            # info | warning | error
+  events = ["conflict.detected", "conflict.resolved", "docker.unavailable", "scan.failed"]
+  secret = "shared-secret"            # optional: X-PortRegistry-Signature: sha256=<HMAC of the body>
+  ```
+
+  Delivery runs on a background thread with 3 retries and never blocks discovery. Test with `portregistry alerts test`; see counters with `portregistry alerts status`. Payload: `{"source", "version", "event", "severity", "timestamp", "machine": {"hostname", "uuid"}, "data": {...}}`.
+- **Browser notifications:** click **Desktop alerts** in the GUI sidebar (per-browser opt-in, uses the Notification API on live SSE events).
+- **Tray notifications:** see below.
+- **Scripts and CI:** `portregistry conflicts --fail-on warning` exits with code **5** if any warning or error exists.
+
+## Start at login, tray icon and doctor
+
+```bash
+portregistry daemon install --dry-run   # show exactly what would be written
+portregistry daemon install             # start the daemon at login (add --tray for the tray icon)
+portregistry daemon autostart           # status
+portregistry daemon uninstall
+```
+
+| OS | Mechanism (per user, no admin rights) |
+|---|---|
+| Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value running `pythonw -m portregistry daemon run --quiet` (no console window) |
+| Linux | systemd user unit `~/.config/systemd/user/portregistry.service` (`systemctl --user enable --now`); XDG autostart `.desktop` file if systemd is unavailable |
+| macOS | LaunchAgent `~/Library/LaunchAgents/io.portregistry.daemon.plist` (`launchctl bootstrap gui/<uid>`) |
+
+A `PORTREGISTRY_HOME` set when you run `install` is carried into the autostart entry.
+
+**Tray icon** (`pip install "portregistry[tray]"`, then `portregistry tray`): a coloured dot (green ok, yellow warnings or stale data, red errors, grey daemon down) with a menu to open the GUI, see conflicts, scan now, start/stop the daemon, and toggle notifications for new conflicts.
+
+**Doctor:** `portregistry doctor` checks Python, config, data-dir permissions, token-file permissions, daemon reachability (or whether its port is taken), database integrity and WAL mode, disk space, scan health and freshness, visibility/elevation, Docker, scheduler, webhooks, autostart and the tray extra. Each check prints an exact fix. It exits 1 if anything fails (`-o json` for scripts).
+
+**Token rotation:** `portregistry token rotate` replaces the local API token (the old one stops working immediately) and logs out browser sessions unless `--keep-sessions`. The new token is written to the token file and never printed.
+
+**Visibility hints:** the GUI machine page, the "Limited visibility" badge and `doctor` explain how to get fuller visibility on your OS (for example, start the daemon from an Administrator terminal on Windows). PortRegistry still never elevates itself.
+
+---
+
 ## Data and configuration locations
 
 Run `portregistry paths` to see the exact paths. The defaults come from platformdirs:
@@ -329,6 +440,10 @@ Configuration keys and their defaults:
 | `[discovery]` | `collect_cwd` | `true` |
 | `[discovery]` | `stale_after_factor` | `3` |
 | `[history]` | `retention_days` | `30` |
+| `[noise]` | `ephemeral_udp` | `true` |
+| `[noise]` | `flap_window_seconds` | `120` (0 disables) |
+| `[noise]` | `noise_retention_days` | `3` |
+| `[[alerts.webhook]]` | `url`, `min_severity`, `events`, `secret` | none (alerts off) |
 | `[logging]` | `level` | `INFO` |
 
 `retention_days` applies to events and to inactive observed sockets, processes, containers and scans. Services and reservations are never deleted by retention.
@@ -471,11 +586,14 @@ Overlap rules for the same protocol and port:
   - GitHub's Windows and macOS runners cannot run Linux containers, so live Docker coverage there relies on that manual check.
 - **No real-time native socket events.** Changes appear within one scan interval (10 s by default), or straight away after `portregistry scan`.
 - **No replay of missed SSE events.** Clients reconnect and refetch state instead.
-- **Noisy UDP history.** Short-lived UDP sockets (browsers, DNS clients) can produce appear/disappear events in history. Retention keeps this bounded.
+- **Noise heuristics.** Ephemeral-range UDP and flapping endpoints are treated as noise; a real UDP service bound inside the ephemeral range is hidden from unregistered-listener findings until you reserve it (reservations are never hidden). Set `ephemeral_udp = false` to disable.
+- **Not run live on this machine (by request):** `daemon install` was exercised only with `--dry-run` and unit tests through fake backends, and the tray icon only through a fake backend (icon rendering verified with real Pillow; the tray was not launched). Linux/macOS autostart backends are unit-tested with temp directories and a fake command runner.
+- **Binaries:** the Windows bundle was built and smoke-tested locally; Linux and macOS bundles are built and smoke-tested only in CI.
+- **Timeline precision:** intervals are reconstructed from scan observations, so open/close times have scan-interval precision.
 - **Process tracking scope.** Processes are tracked only while they own endpoints. "Process disappeared" means "no longer owns any observed endpoint", not necessarily that the process exited.
 - **Deferred to later releases:**
   - remote machines and agents;
-  - OS service installation (systemd, Windows Service, launchd);
+  - system-wide OS services (Windows Service, root systemd units); per-user login autostart is available;
   - service dependency graphs;
   - a separate `DockerNetwork` table (network data is stored as JSON on the container);
   - native fallbacks (Windows IP Helper, `/proc`).
@@ -492,8 +610,9 @@ pytest -m "not slow"            # skip daemon subprocess tests
 pytest -m docker_live           # live Docker tests (skipped if Docker is unreachable)
 ruff check src tests
 ruff format --check src tests
-mypy                            # core, discovery, config, paths, client, conflict engine, lock, scheduler
+mypy                            # core, discovery, config, paths, client, conflict engine, daemon parts, tray
 python -m build                 # sdist + wheel
+pyinstaller --noconfirm --clean packaging/pyinstaller/portregistry.spec   # needs the [binary] extra
 ```
 
 Django management commands, for example after changing models:
@@ -502,4 +621,4 @@ Django management commands, for example after changing models:
 python -m django makemigrations portregistry --settings=portregistry.django_app.settings
 ```
 
-CI is defined in `.github/workflows/ci.yml`. It runs lint and type checks, tests on Ubuntu, Windows and macOS with Python 3.12 and 3.13, a Docker-required live job on Ubuntu, and a package build with a smoke test.
+CI is defined in `.github/workflows/ci.yml`. It runs lint and type checks, tests on Ubuntu, Windows and macOS with Python 3.12 and 3.13, a Docker-required live job on Ubuntu, a package build with wheel and pipx smoke tests, and PyInstaller bundles for all three OSes (each smoke-tested by starting and stopping the daemon).
