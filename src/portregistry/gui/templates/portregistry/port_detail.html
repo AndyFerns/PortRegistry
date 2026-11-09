@@ -1,0 +1,67 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}{{ sock|endpoint }}{% endblock %}
+{% block heading %}<span class="mono">{{ sock|endpoint }}</span> {% if sock.active %}<span class="badge st-ok">{{ sock.state }}</span>{% else %}<span class="badge">no longer observed</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Endpoint</h2>
+    <dl class="kv">
+      <dt>Protocol</dt><dd>{{ sock.protocol|upper }}{% if sock.protocol == "udp" %} <span class="muted small">(bound socket; UDP has no LISTEN state)</span>{% endif %}</dd>
+      <dt>Address</dt><dd class="mono">{{ sock.address }} <span class="muted">({{ sock.family }})</span></dd>
+      <dt>Port</dt><dd class="mono">{{ sock.port }}</dd>
+      <dt>First seen</dt><dd title="{{ sock.first_seen|date:'c' }}">{{ sock.first_seen|ago }}</dd>
+      <dt>Last seen</dt><dd title="{{ sock.last_seen|date:'c' }}">{{ sock.last_seen|ago }}{% if sock.last_scan_id %} <span class="muted small">(scan #{{ sock.last_scan_id }})</span>{% endif %}</dd>
+      {% if sock.ended_at %}<dt>Closed</dt><dd>{{ sock.ended_at|ago }}</dd>{% endif %}
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Owning process</h2>
+    {% if sock.process %}
+      {% with p=sock.process %}
+      <dl class="kv">
+        <dt>Name</dt><dd><a href="/processes/{{ p.pk }}/">{{ p.name|default:"?" }}</a></dd>
+        <dt>PID</dt><dd class="mono">{{ p.pid }}</dd>
+        <dt>Started</dt><dd>{{ p.started_at|ago }}</dd>
+        <dt>User</dt><dd>{{ p.username|default:"—" }}</dd>
+        <dt>Executable</dt><dd class="mono small">{{ p.exe|default:"—" }}</dd>
+        <dt>Command line</dt><dd class="mono small">{{ p.cmdline|cmdline|default:"—" }}</dd>
+        <dt>Identity</dt><dd class="mono small">{{ p.identity_key }}{% if not p.identity_complete %} <span class="badge sev-warning">incomplete</span>{% endif %}</dd>
+      </dl>
+      {% if p.metadata_errors %}<div class="alert info small" style="margin-top:8px">Restricted metadata: {{ p.metadata_errors|pretty_json }}. PortRegistry never elevates privileges automatically.</div>{% endif %}
+      {% endwith %}
+    {% elif sock.pid %}
+      <p class="muted">PID {{ sock.pid }} was reported by the OS but its metadata could not be read (the process may have exited during the scan).</p>
+    {% else %}
+      <p class="muted">The OS did not report an owning PID (often requires elevated privileges).</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid grid-2" style="margin-top:14px">
+  <section class="card">
+    <h2>Registry</h2>
+    {% for r in covering %}
+      <p>Covered by <a href="/reservations/{{ r.pk }}/">reservation #{{ r.pk }}</a> <span class="mono">{{ r|endpoint }}</span>{% if r.service %} for <a href="/services/{{ r.service.pk }}/">{{ r.service.name }}</a>{% endif %}</p>
+    {% empty %}
+      <p class="muted">No reservation covers this endpoint.</p>
+      <a class="btn small" href="/reservations/new/?port={{ sock.port }}&protocol={{ sock.protocol }}">Reserve {{ sock.protocol|upper }} {{ sock.port }}</a>
+    {% endfor %}
+    {% for m in docker %}
+      <p>Published by Docker container <strong>{{ m.container.name }}</strong> ({{ m.container.image_ref }}) → {{ m.container_port }}/{{ m.protocol }}. <span class="muted small">Container port mappings are reported by Docker; the host socket owner may be a proxy process.</span></p>
+    {% endfor %}
+    {% if siblings %}
+      <h3 style="margin-top:12px">Other endpoints on port {{ sock.port }}</h3>
+      <ul>{% for s in siblings %}<li><a href="/ports/{{ s.pk }}/" class="mono">{{ s|endpoint }}</a> — {{ s.process.name|default:"unresolved" }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>Conflicts</h2>
+    {% for conflict in conflicts %}
+      {% include "portregistry/partials/conflict_card.html" with conflict=conflict %}
+    {% empty %}<p class="muted">None.</p>{% endfor %}
+    <h2 style="margin-top:12px">History</h2>
+    <ul class="timeline">{% for e in history %}<li><span class="muted small">{{ e.timestamp|ago }}</span><span>{{ e.summary }}</span></li>{% empty %}<li><span></span><span class="muted">No recorded changes (present since the initial baseline).</span></li>{% endfor %}</ul>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}{{ proc.name|default:"Process" }} ({{ proc.pid }}){% endblock %}
+{% block heading %}{{ proc.name|default:"?" }} <span class="muted small">pid {{ proc.pid }}</span> {% if proc.active %}<span class="badge st-ok">active</span>{% else %}<span class="badge">no longer observed</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Process identity</h2>
+    <dl class="kv">
+      <dt>Identity</dt><dd class="mono small">{{ proc.identity_key }}</dd>
+      <dt>Identity hash</dt><dd class="mono small">{{ proc.identity_hash|default:"—" }}</dd>
+      <dt>Complete</dt><dd>{% if proc.identity_complete %}yes (machine + PID + creation time){% else %}<span class="badge sev-warning">incomplete</span> creation time unavailable; never merged with later processes reusing this PID{% endif %}</dd>
+      <dt>Started</dt><dd title="{{ proc.started_at|date:'c' }}">{{ proc.started_at|ago }}</dd>
+      <dt>First seen</dt><dd>{{ proc.first_seen|ago }}</dd>
+      <dt>Last seen</dt><dd>{{ proc.last_seen|ago }}</dd>
+      {% if proc.ended_at %}<dt>Stopped owning endpoints</dt><dd>{{ proc.ended_at|ago }}</dd>{% endif %}
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Metadata</h2>
+    <dl class="kv">
+      <dt>Executable</dt><dd class="mono small">{{ proc.exe|default:"—" }}</dd>
+      <dt>Command line</dt><dd class="mono small">{{ proc.cmdline|cmdline|default:"—" }}</dd>
+      <dt>Working dir</dt><dd class="mono small">{{ proc.cwd|default:"—" }}</dd>
+      <dt>User</dt><dd>{{ proc.username|default:"—" }}</dd>
+      <dt>Parent PID</dt><dd class="mono">{{ proc.ppid|default:"—" }}</dd>
+    </dl>
+    {% if proc.metadata_errors %}<div class="alert info small" style="margin-top:8px">Some fields are restricted by OS permissions: {{ proc.metadata_errors|pretty_json }}</div>{% endif %}
+    <p class="small muted">Command lines are displayed for identification only; PortRegistry never executes them and never reads environment variables.</p>
+  </section>
+</div>
+<section class="card" style="margin-top:14px">
+  <h2>Endpoints</h2>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Endpoint</th><th>State</th><th>First seen</th><th>Last seen</th></tr></thead>
+    <tbody>{% for s in sockets %}
+      <tr class="{% if not s.active %}inactive{% endif %}"><td class="mono"><a href="/ports/{{ s.pk }}/">{{ s|endpoint }}</a></td><td>{{ s.state }}{% if not s.active %} (gone){% endif %}</td><td>{{ s.first_seen|ago }}</td><td>{{ s.last_seen|ago }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="empty">No endpoints recorded.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if same_pid %}
+<section class="card" style="margin-top:14px">
+  <h2>Other process instances with PID {{ proc.pid }}</h2>
+  <p class="small muted">PIDs are reused by the OS; these are distinct processes (different creation times).</p>
+  <ul>{% for p in same_pid %}<li><a href="/processes/{{ p.pk }}/">{{ p.name|default:"?" }}</a> — {{ p.identity_key }}{% if not p.active %} (gone){% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+<section class="card" style="margin-top:14px">
+  <h2>History</h2>
+  <ul class="timeline">{% for e in history %}<li><span class="muted small">{{ e.timestamp|ago }}</span><span>{{ e.summary }}</span></li>{% empty %}<li><span></span><span class="muted">No recorded changes.</span></li>{% endfor %}</ul>
+</section>
+{% endblock %}
