@@ -1,0 +1,15 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Confirm{% endblock %}
+{% block heading %}Confirm{% endblock %}
+{% block content %}
+<section class="card" style="max-width:640px">
+  <h2>{{ title }}</h2>
+  <p>{{ body }}</p>
+  {% if affected %}<p class="small">Affected reservations (kept): {% for a in affected %}<code>{{ a }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  <form method="post" class="actions">
+    {% csrf_token %}
+    <button class="btn {% if danger %}danger{% else %}primary{% endif %}" type="submit">Confirm</button>
+    <a class="btn" href="{{ cancel_url }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}
