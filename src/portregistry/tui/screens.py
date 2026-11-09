@@ -177,6 +177,7 @@ class ReservationFormScreen(ModalScreen[dict[str, Any] | None]):
             yield Static("", id="findings")
             yield Label("", id="error", classes="error")
             with Horizontal(classes="buttons"):
+                yield Button("Suggest free port", id="suggest")
                 yield Button("Check", id="check")
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", id="cancel")
@@ -200,6 +201,27 @@ class ReservationFormScreen(ModalScreen[dict[str, Any] | None]):
     @on(Button.Pressed, "#cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    @on(Button.Pressed, "#suggest")
+    def _suggest(self) -> None:
+        self.suggest()
+
+    @work(exclusive=True)
+    async def suggest(self) -> None:
+        protocol = self.query_one("#protocol", Select).value
+        address = self.query_one("#address", Input).value.strip() or "*"
+        try:
+            data = await self._client.get(
+                "ports/free/", protocol=protocol, address=address, count=1
+            )
+        except Exception as exc:
+            self.query_one("#error", Label).update(plain(format_error(exc)))
+            return
+        if not data.get("ports"):
+            self.query_one("#error", Label).update("No free port found in 3000-9999.")
+            return
+        self.query_one("#port", Input).value = str(data["ports"][0]["port"])
+        self.check()
 
     @on(Button.Pressed, "#check")
     def _check(self) -> None:
@@ -241,6 +263,66 @@ class ReservationFormScreen(ModalScreen[dict[str, Any] | None]):
         self.dismiss(created)
 
 
+class AdoptScreen(ModalScreen[dict[str, Any] | None]):
+    """Register an observed endpoint's process as a service (pre-filled)."""
+
+    DEFAULT_CSS = MODAL_CSS
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, client: Any, proposal: dict[str, Any]) -> None:
+        super().__init__()
+        self._client = client
+        self._proposal = proposal
+
+    def compose(self) -> ComposeResult:
+        svc = self._proposal["service"]
+        selected = [e for e in self._proposal["endpoints"] if e["selected"]]
+        with Vertical(id="dialog"):
+            yield Label(plain(f"Register as service: {self._proposal['source']}"), classes="title")
+            yield Input(value=svc["name"], placeholder="Name", id="name")
+            yield Input(
+                value=svc["expected_executable"], placeholder="Expected executable", id="exe"
+            )
+            yield Input(
+                value=svc["expected_working_directory"], placeholder="Working directory", id="cwd"
+            )
+            yield Input(value=svc["category"], placeholder="Category", id="category")
+            yield Static(
+                plain("Reserves: " + (", ".join(e["endpoint"] for e in selected) or "nothing"))
+            )
+            yield Label("", id="error", classes="error")
+            with Horizontal(classes="buttons"):
+                yield Button("Save", variant="primary", id="save")
+                yield Button("Cancel", id="cancel")
+
+    @on(Button.Pressed, "#cancel")
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#save")
+    def _save(self) -> None:
+        self.save()
+
+    @work(exclusive=True)
+    async def save(self) -> None:
+        service = dict(self._proposal["service"])
+        service.update(
+            name=self.query_one("#name", Input).value.strip(),
+            expected_executable=self.query_one("#exe", Input).value.strip(),
+            expected_working_directory=self.query_one("#cwd", Input).value.strip(),
+            category=self.query_one("#category", Input).value.strip(),
+        )
+        ids = [e["socket_id"] for e in self._proposal["endpoints"] if e["selected"]]
+        try:
+            result = await self._client.post(
+                "services/adopt/", {"service": service, "socket_ids": ids}
+            )
+        except Exception as exc:
+            self.query_one("#error", Label).update(plain(format_error(exc)))
+            return
+        self.dismiss(result)
+
+
 HELP_TEXT = """\
 PortRegistry TUI - all data comes from the local daemon.
 
@@ -249,6 +331,9 @@ PortRegistry TUI - all data comes from the local daemon.
   Enter    details for the row      Esc      back / close dialog
   a        add service              n        new reservation
   x        release reservation      i        toggle info-level conflicts
+  s        register endpoint as a service (Ports tab)
+  k        mark endpoint as known (Ports tab)
+  z        show/hide short-lived history noise
   1-8      switch tabs              ?        this help
 
 Live updates arrive over Server-Sent Events; if the connection drops the

@@ -22,6 +22,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Static, TabbedCont
 from portregistry import __version__
 from portregistry.client import AsyncApiClient
 from portregistry.tui.screens import (
+    AdoptScreen,
     ConfirmScreen,
     DetailScreen,
     HelpScreen,
@@ -97,6 +98,9 @@ class PortRegistryApp(App[None]):
         Binding("n", "new_reservation", "New reservation"),
         Binding("x", "release", "Release", show=False),
         Binding("i", "toggle_info", "Info conflicts", show=False),
+        Binding("z", "toggle_noise", "History noise", show=False),
+        Binding("k", "mark_known", "Mark known", show=False),
+        Binding("s", "adopt", "Register as service", show=False),
         Binding("question_mark", "help", "Help"),
         *[
             Binding(str(i + 1), f"show_tab('{tab}')", tab.title(), show=False)
@@ -117,6 +121,7 @@ class PortRegistryApp(App[None]):
         self._data: dict[str, Any] = {}
         self._rows: dict[str, dict[str, Any]] = {}
         self._show_info = False
+        self._show_noise = False
         self._refresh_pending = False
         self.connected = False
 
@@ -155,11 +160,14 @@ class PortRegistryApp(App[None]):
                 "Proto",
                 "Address",
                 "Port",
+                "Label",
                 "State",
                 "PID",
                 "Process",
+                "Project",
                 "User",
                 "Docker",
+                "Note",
                 "Since",
             ],
             "services-table": ["ID", "Name", "Category", "Expected executable", "Reservations"],
@@ -214,7 +222,7 @@ class PortRegistryApp(App[None]):
                     "conflicts/", min_severity=None if self._show_info else "warning", limit=1000
                 ),
                 client.results("machines/"),
-                client.results("history/", limit=200),
+                client.results("history/", limit=200, noise="1" if self._show_noise else None),
             )
         except Exception as exc:
             self.connected = False
@@ -270,11 +278,14 @@ class PortRegistryApp(App[None]):
             p["protocol"].upper(),
             plain(p["address"]),
             str(p["port"]),
+            plain(p.get("label") or ""),
             p["state"],
             str(p.get("pid") or "-"),
             plain(proc.get("name") or ("unresolved" if p.get("pid") else "unknown")),
+            plain(proc.get("project") or ""),
             plain(proc.get("username")),
             plain(docker or "-"),
+            Text(str(p.get("ignored") or ""), style="dim"),
             ago(p.get("first_seen")),
         ]
 
@@ -458,6 +469,60 @@ class PortRegistryApp(App[None]):
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen())
+
+    def action_toggle_noise(self) -> None:
+        self._show_noise = not self._show_noise
+        self.notify(
+            "Showing short-lived/ignored history" if self._show_noise else "Hiding history noise"
+        )
+        self.refresh_data()
+
+    def _selected_port(self) -> dict[str, Any] | None:
+        if self.query_one(TabbedContent).active != "ports":
+            self.notify("Select an endpoint on the Ports tab first.", severity="warning")
+            return None
+        item = self._selected("ports-table")
+        if item is None:
+            self.notify("No endpoint selected.", severity="warning")
+        return item
+
+    def action_mark_known(self) -> None:
+        item = self._selected_port()
+        if item is not None:
+            self._mark_known(item["id"])
+
+    @work
+    async def _mark_known(self, socket_id: int) -> None:
+        try:
+            rule = await self.client.post(f"ports/{socket_id}/known/")
+        except Exception as exc:
+            self.notify(format_error(exc), severity="error")
+            return
+        self.notify(f"Added ignore rule '{rule['name']}'")
+        self.refresh_data()
+
+    def action_adopt(self) -> None:
+        item = self._selected_port()
+        if item is not None:
+            self._adopt(item["id"])
+
+    @work
+    async def _adopt(self, socket_id: int) -> None:
+        try:
+            proposal = await self.client.get("services/adopt/", socket=socket_id)
+        except Exception as exc:
+            self.notify(format_error(exc), severity="error")
+            return
+
+        def done(result: dict[str, Any] | None) -> None:
+            if result:
+                self.notify(
+                    f"Service '{result['service']['name']}' registered with "
+                    f"{len(result['reservations'])} reservation(s)"
+                )
+                self.refresh_data()
+
+        self.push_screen(AdoptScreen(self.client, proposal), done)
 
     def action_toggle_info(self) -> None:
         self._show_info = not self._show_info

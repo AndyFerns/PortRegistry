@@ -7,7 +7,7 @@ daemon is the single source of truth.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -150,6 +150,41 @@ class ApiClient:
 
     def health(self) -> dict[str, Any]:
         return self.get("health/")
+
+    def stream_events(self, read_timeout: float = 60.0) -> Iterator[tuple[str, dict[str, Any]]]:
+        """Blocking iterator of ``(event, data)`` from the SSE stream until it closes."""
+        url = f"{API_PREFIX}/events/stream/"
+        try:
+            with self._client.stream(
+                "GET", url, timeout=httpx.Timeout(10.0, read=read_timeout)
+            ) as response:
+                if response.status_code >= 400:
+                    response.read()
+                    raise _api_error(response)
+                yield from parse_sse_lines(response.iter_lines())
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise _not_running(self.base_url) from exc
+
+
+def parse_sse_lines(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Parse Server-Sent Event lines into ``(event, data)`` pairs."""
+    event = "message"
+    data_lines: list[str] = []
+    for line in lines:
+        if line == "":
+            if data_lines:
+                try:
+                    payload = json.loads("\n".join(data_lines))
+                except ValueError:
+                    payload = {"raw": "\n".join(data_lines)}
+                yield event, payload
+            event, data_lines = "message", []
+        elif line.startswith(":"):
+            continue
+        elif line.startswith("event:"):
+            event = line[6:].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[5:].strip())
 
 
 class AsyncApiClient:

@@ -53,8 +53,28 @@ stale_after_factor = 3
 # Services and reservations are never deleted by retention cleanup.
 retention_days = 30
 
+[noise]
+# UDP sockets on the OS ephemeral port range (short-lived client sockets from
+# browsers, DNS resolvers...) are not flagged as unregistered listeners and their
+# history events are marked as noise (hidden by default).
+ephemeral_udp = true
+# An endpoint that closes within this many seconds of opening is "flapping":
+# both history events are marked as noise.
+flap_window_seconds = 120
+# Noise events are deleted sooner than regular history.
+noise_retention_days = 3
+
 [logging]
 level = "INFO"
+
+# Alerts: POST a JSON payload to your own endpoints when conflicts appear or are
+# resolved. Disabled unless at least one webhook is configured. Example:
+#
+# [[alerts.webhook]]
+# url = "http://127.0.0.1:9000/portregistry"
+# min_severity = "warning"          # info | warning | error
+# events = ["conflict.detected", "conflict.resolved", "docker.unavailable", "scan.failed"]
+# secret = "shared-secret"          # optional: adds an HMAC-SHA256 X-PortRegistry-Signature header
 """
 
 
@@ -87,12 +107,53 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class NoiseConfig:
+    ephemeral_udp: bool = True
+    flap_window_seconds: float = 120.0
+    noise_retention_days: int = 3
+
+
+ALERT_EVENTS = (
+    "conflict.detected",
+    "conflict.resolved",
+    "docker.unavailable",
+    "docker.available",
+    "scan.failed",
+    "alert.test",
+)
+SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
+
+
+@dataclass(frozen=True)
+class WebhookConfig:
+    url: str
+    min_severity: str = "warning"
+    events: tuple[str, ...] = ALERT_EVENTS
+    secret: str = field(default="", repr=False)
+
+    def public_dict(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "min_severity": self.min_severity,
+            "events": list(self.events),
+            "signed": bool(self.secret),
+        }
+
+
+@dataclass(frozen=True)
+class AlertsConfig:
+    webhooks: tuple[WebhookConfig, ...] = ()
+
+
+@dataclass(frozen=True)
 class Config:
     paths: AppPaths
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    noise: NoiseConfig = field(default_factory=NoiseConfig)
+    alerts: AlertsConfig = field(default_factory=AlertsConfig)
 
     @property
     def base_url(self) -> str:
@@ -110,6 +171,8 @@ class Config:
             "discovery": asdict(self.discovery),
             "history": asdict(self.history),
             "logging": asdict(self.logging),
+            "noise": asdict(self.noise),
+            "alerts": {"webhooks": [w.public_dict() for w in self.alerts.webhooks]},
             "paths": self.paths.as_dict(),
         }
 
@@ -138,7 +201,7 @@ def _expect(section: dict[str, Any], key: str, kinds: tuple[type, ...], default:
 
 def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
     """Validate a raw TOML mapping and build a :class:`Config`."""
-    for name in ("daemon", "discovery", "history", "logging"):
+    for name in ("daemon", "discovery", "history", "logging", "noise", "alerts"):
         if name in raw and not isinstance(raw[name], dict):
             raise ConfigError(f"Configuration section [{name}] must be a table.")
     d = raw.get("daemon", {})
@@ -194,6 +257,9 @@ def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
     if level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
         raise ConfigError("logging.level must be one of DEBUG, INFO, WARNING, ERROR.")
 
+    noise = _parse_noise(raw.get("noise", {}))
+    alerts = _parse_alerts(raw.get("alerts", {}))
+
     return Config(
         paths=paths,
         daemon=DaemonConfig(host=host, port=port, allow_remote=allow_remote),
@@ -208,7 +274,55 @@ def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
         ),
         history=HistoryConfig(retention_days=retention),
         logging=LoggingConfig(level=level),
+        noise=noise,
+        alerts=alerts,
     )
+
+
+def _parse_noise(section: dict[str, Any]) -> NoiseConfig:
+    flap = float(_expect(section, "flap_window_seconds", (int, float), 120))
+    keep = int(_expect(section, "noise_retention_days", (int,), 3))
+    if flap < 0:
+        raise ConfigError("noise.flap_window_seconds must be 0 or more (0 disables).")
+    if keep < 1:
+        raise ConfigError("noise.noise_retention_days must be at least 1.")
+    return NoiseConfig(
+        ephemeral_udp=bool(_expect(section, "ephemeral_udp", (bool,), True)),
+        flap_window_seconds=flap,
+        noise_retention_days=keep,
+    )
+
+
+def _parse_alerts(section: dict[str, Any]) -> AlertsConfig:
+    raw_hooks = section.get("webhook", [])
+    if isinstance(raw_hooks, dict):
+        raw_hooks = [raw_hooks]
+    if not isinstance(raw_hooks, list):
+        raise ConfigError("alerts.webhook must be an array of tables ([[alerts.webhook]]).")
+    hooks: list[WebhookConfig] = []
+    for index, hook in enumerate(raw_hooks):
+        if not isinstance(hook, dict):
+            raise ConfigError(f"alerts.webhook[{index}] must be a table.")
+        url = str(_expect(hook, "url", (str,), "")).strip()
+        if not url.lower().startswith(("http://", "https://")):
+            raise ConfigError(f"alerts.webhook[{index}].url must be an http(s) URL.")
+        severity = str(_expect(hook, "min_severity", (str,), "warning")).lower()
+        if severity not in SEVERITY_RANK:
+            raise ConfigError(
+                f"alerts.webhook[{index}].min_severity must be info, warning or error."
+            )
+        events = _expect(hook, "events", (list,), list(ALERT_EVENTS))
+        unknown = [e for e in events if e not in ALERT_EVENTS]
+        if unknown or not all(isinstance(e, str) for e in events):
+            raise ConfigError(
+                f"alerts.webhook[{index}].events contains unknown events {unknown}; "
+                f"allowed: {', '.join(ALERT_EVENTS)}."
+            )
+        secret = str(_expect(hook, "secret", (str,), ""))
+        hooks.append(
+            WebhookConfig(url=url, min_severity=severity, events=tuple(events), secret=secret)
+        )
+    return AlertsConfig(webhooks=tuple(hooks))
 
 
 def load_config(paths: AppPaths | None = None) -> Config:
@@ -251,6 +365,13 @@ def load_or_create_token(paths: AppPaths) -> str:
     if token is None:
         token = secrets.token_urlsafe(32)
         write_private_file(paths.token_file, token + "\n")
+    return token
+
+
+def rotate_token(paths: AppPaths) -> str:
+    """Replace the local API token with a new random one (returned, never logged)."""
+    token = secrets.token_urlsafe(32)
+    write_private_file(paths.token_file, token + "\n")
     return token
 
 
