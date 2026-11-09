@@ -23,15 +23,19 @@
     <a href="/conflicts/" class="{% if n == 'gui-conflicts' %}active{% endif %}">Conflicts</a>
     <a href="/history/" class="{% if n == 'gui-history' %}active{% endif %}">History</a>
     <a href="/containers/" class="{% if n == 'gui-containers' %}active{% endif %}">Containers</a>
+    <a href="/ports/timeline/" class="{% if n == 'gui-timeline' %}active{% endif %}">Timeline</a>
     <a href="/machine/" class="{% if n == 'gui-machine' %}active{% endif %}">Machine</a>
+    <a href="/settings/ignore/" class="{% if 'gui-ignore' in n %}active{% endif %}">Ignore rules</a>
   </div>
   <div class="sidebar-foot">
     PortRegistry {{ pr_version }}<br>
-    <span class="muted">Press <kbd>/</kbd> to search</span>
+    <span class="muted">Press <kbd>/</kbd> to search</span><br>
+    <button id="pr-notify" class="btn small" type="button" style="margin-top:8px" title="Browser notifications for new conflicts">Desktop alerts: off</button>
     <form method="post" action="/logout/">{% csrf_token %}<button class="btn small" type="submit">Log out</button></form>
   </div>
 </nav>
 {% endwith %}
+<div id="pr-alerts" hidden hx-get="/partials/recent-events/" hx-trigger="sse:alerts" hx-swap="none"></div>
 <main>
   <div class="alert error offline-banner" role="status">
     Disconnected from the PortRegistry daemon. Data on this page may be stale; reconnecting automatically.

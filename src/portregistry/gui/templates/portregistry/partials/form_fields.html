@@ -3,7 +3,8 @@
 {% for field in form %}
   <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
   <div>
-    {{ field }}
+    {% if field.name == "port" and suggest %}<div class="actions">{{ field }}
+      <button class="btn small" type="button" hx-get="/reservations/suggest-port/" hx-include="[name='protocol'],[name='bind_address']" hx-target="#{{ field.id_for_label }}" hx-swap="outerHTML" title="Find a port that is not observed, reserved or published">Suggest free port</button></div>{% else %}{{ field }}{% endif %}
     {% if field.help_text %}<div class="helptext">{{ field.help_text }}</div>{% endif %}
     {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
   </div>

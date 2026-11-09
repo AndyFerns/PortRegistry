@@ -4,6 +4,7 @@ from django.urls import path, re_path
 from django.views.static import serve
 
 from portregistry.gui import auth, views
+from portregistry.gui import views_extra as vx
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 
@@ -14,6 +15,17 @@ urlpatterns = [
     path("logout/", auth.logout_view, name="gui-logout"),
     path("scan/", views.trigger_scan, name="gui-scan"),
     path("ports/", views.ports, name="gui-ports"),
+    path("ports/timeline/", vx.timeline_view, name="gui-timeline"),
+    path("ports/<int:pk>/known/", vx.mark_socket_known, name="gui-port-known"),
+    path("processes/<int:pk>/known/", vx.mark_process_known, name="gui-process-known"),
+    path("adopt/", vx.adopt_view, name="gui-adopt"),
+    path("settings/ignore/", vx.ignore_rules_view, name="gui-ignore-rules"),
+    path("settings/ignore/<int:pk>/toggle/", vx.ignore_rule_toggle, name="gui-ignore-toggle"),
+    path("settings/ignore/<int:pk>/delete/", vx.ignore_rule_delete, name="gui-ignore-delete"),
+    path("reservations/suggest-port/", vx.suggest_port, name="gui-suggest-port"),
+    path("onboarding/dismiss/", vx.onboarding_dismiss, name="gui-onboarding-dismiss"),
+    path("filters/save/", vx.save_filter, name="gui-filter-save"),
+    path("filters/<int:pk>/delete/", vx.delete_filter, name="gui-filter-delete"),
     path("ports/<int:pk>/", views.port_detail, name="gui-port"),
     path("processes/<int:pk>/", views.process_detail, name="gui-process"),
     path("services/", views.services, name="gui-services"),

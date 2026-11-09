@@ -1,0 +1,50 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Register as service{% endblock %}
+{% block heading %}Register as service{% endblock %}
+{% block content %}
+<p class="muted">Pre-filled from {{ proposal.source }}. Review and adjust, then save. Nothing is written until you click Save.</p>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+<form method="post">
+  {% csrf_token %}
+  {% if proposal.socket_id %}<input type="hidden" name="socket" value="{{ proposal.socket_id }}">{% endif %}
+  {% if proposal.process_id %}<input type="hidden" name="process" value="{{ proposal.process_id }}">{% endif %}
+  <div class="grid grid-2">
+    <section class="card">
+      <h2>Service</h2>
+      <div class="form-grid">
+        <label for="f-name">Name *</label>
+        <div><input id="f-name" name="name" value="{{ proposal.service.name }}" maxlength="100" required></div>
+        <label for="f-cat">Category</label>
+        <div><input id="f-cat" name="category" value="{{ proposal.service.category }}" maxlength="50" list="categories">
+          <datalist id="categories">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist></div>
+        <label for="f-exe">Expected executable</label>
+        <div><input id="f-exe" name="expected_executable" value="{{ proposal.service.expected_executable }}" maxlength="500">
+          <div class="helptext">Used to verify ownership of the reserved ports.</div></div>
+        <label for="f-cwd">Working directory</label>
+        <div><input id="f-cwd" name="expected_working_directory" value="{{ proposal.service.expected_working_directory }}" maxlength="500"></div>
+        <label for="f-desc">Description</label>
+        <div><textarea id="f-desc" name="description" rows="3">{{ proposal.service.description }}</textarea></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Reserve these endpoints</h2>
+      {% for ep in proposal.endpoints %}
+        <label class="actions" style="margin-bottom:6px">
+          <input type="checkbox" name="socket_ids" value="{{ ep.socket_id }}" {% if ep.selected %}checked{% endif %}>
+          <span class="mono">{{ ep.endpoint }}</span>{% if ep.label %} <span class="muted small">{{ ep.label }}</span>{% endif %}
+        </label>
+      {% empty %}
+        <p class="muted">This process owns no active endpoints; only the service will be created.</p>
+      {% endfor %}
+      <label class="actions small" style="margin-top:10px">
+        <input type="checkbox" name="reserve_any_address"> Reserve on any address (<code>*</code>) instead of the observed address
+      </label>
+      <p class="small muted">Reservations are advisory: they document intent and enable conflict checks.</p>
+    </section>
+  </div>
+  <div class="actions" style="margin-top:14px">
+    <button class="btn primary" type="submit">Save service</button>
+    <a class="btn" href="{% if proposal.process_id %}/processes/{{ proposal.process_id }}/{% elif proposal.socket_id %}/ports/{{ proposal.socket_id }}/{% else %}/ports/{% endif %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "portregistry/base.html" %}
+{% load pr_format %}
 {% block title %}History{% endblock %}
 {% block heading %}History{% endblock %}
 {% block content %}
@@ -16,8 +17,12 @@
       <option value="warning" {% if severity == "warning" %}selected{% endif %}>warning</option>
       <option value="error" {% if severity == "error" %}selected{% endif %}>error</option>
     </select></label>
+  {% if include_noise %}<input type="hidden" name="noise" value="1">{% endif %}
 </form>
-<p class="small muted">Only meaningful state changes are recorded; unchanged polling cycles produce no history.</p>
+{% include "portregistry/partials/saved_filters.html" with page="history" %}
+<p class="small muted">Only meaningful state changes are recorded; unchanged polling cycles produce no history.
+  {% if include_noise %}Showing short-lived/ignored churn too. <a href="{% query_with noise='' %}">Hide noise</a>
+  {% elif hidden_noise %}{{ hidden_noise }} short-lived or ignored event{{ hidden_noise|pluralize }} hidden. <a href="{% query_with noise='1' %}">Show them</a>{% endif %}</p>
 <div id="history-table" hx-get="/history/" hx-trigger="sse:history" hx-include=".filters" hx-swap="innerHTML">
   {% include "portregistry/partials/history_table.html" %}
 </div>

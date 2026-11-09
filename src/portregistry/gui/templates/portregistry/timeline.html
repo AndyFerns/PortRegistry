@@ -1,0 +1,50 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}Port timeline{% endblock %}
+{% block heading %}Port timeline{% if tl %} <span class="mono">{{ tl.port }}</span>{% if tl.label %} <span class="muted small">{{ tl.label }}</span>{% endif %}{% endif %}{% endblock %}
+{% block content %}
+<form class="filters" method="get">
+  <label>Port <input type="number" name="port" min="1" max="65535" value="{{ params.port|default:'' }}" required style="width:8em" data-search></label>
+  <label>Protocol <select name="protocol"><option value="">both</option>
+    <option value="tcp" {% if params.protocol == "tcp" %}selected{% endif %}>TCP</option>
+    <option value="udp" {% if params.protocol == "udp" %}selected{% endif %}>UDP</option></select></label>
+  <label>Days <select name="days">
+    <option value="1" {% if params.days == "1" %}selected{% endif %}>1</option>
+    <option value="3" {% if params.days == "3" %}selected{% endif %}>3</option>
+    <option value="7" {% if not params.days or params.days == "7" %}selected{% endif %}>7</option>
+    <option value="14" {% if params.days == "14" %}selected{% endif %}>14</option>
+    <option value="30" {% if params.days == "30" %}selected{% endif %}>30</option></select></label>
+  <button class="btn small" type="submit">Show</button>
+</form>
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+{% if tl %}
+<section class="card">
+  {% if not tl.lanes and not tl.reservations %}
+    <p class="muted">Nothing held or reserved this port in the last {{ tl.window.days }} day(s).</p>
+  {% else %}
+  <div class="tl">
+    <div class="tl-row tl-axis"><div class="tl-label"></div><div class="tl-track">
+      {% for t in tl.ticks %}<span class="tl-tick" style="left:{{ t.x }}%">{{ t.label }}</span>{% endfor %}
+    </div></div>
+    {% for lane in tl.lanes %}
+    <div class="tl-row">
+      <div class="tl-label">{% if lane.process_id %}<a href="/processes/{{ lane.process_id }}/">{{ lane.owner }}</a>{% else %}{{ lane.owner }}{% endif %}<br><span class="mono small muted">{{ lane.endpoint }}</span></div>
+      <div class="tl-track">
+        {% for i in lane.intervals %}<span class="tl-bar{% if i.ongoing %} ongoing{% endif %}" style="left:{{ i.x }}%;width:{{ i.w }}%" title="{{ i.start|ago }} → {% if i.ongoing %}now{% else %}{{ i.end|ago }}{% endif %}"></span>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% for r in tl.reservations %}
+    <div class="tl-row">
+      <div class="tl-label"><a href="/reservations/{{ r.id }}/">Reservation #{{ r.id }}</a><br><span class="small muted">{{ r.service|default:"no service" }} · {{ r.status }}</span></div>
+      <div class="tl-track"><span class="tl-bar reserved" style="left:{{ r.x }}%;width:{{ r.w }}%" title="{{ r.endpoint }}"></span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <p class="small muted" style="margin-top:10px">{{ tl.note }} Window: last {{ tl.window.days }} day(s).</p>
+</section>
+{% else %}
+  <p class="muted">Enter a port to see which processes held it over time, alongside its reservations.</p>
+{% endif %}
+{% endblock %}

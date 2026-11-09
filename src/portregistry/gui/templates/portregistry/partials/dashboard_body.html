@@ -1,4 +1,5 @@
 {% load pr_format %}
+{% include "portregistry/partials/onboarding.html" %}
 {% with e=summary.endpoints c=summary.conflicts r=summary.reservations f=summary.freshness %}
 {% if f.stale %}
 <div class="alert warn">Discovery data is stale (last complete scan {{ f.last_success_at|ago }}). Displayed endpoints may not reflect the current machine state.</div>

@@ -24,9 +24,16 @@
       <option value="false" {% if params.active == "false" %}selected{% endif %}>gone</option>
       <option value="all" {% if params.active == "all" %}selected{% endif %}>all</option>
     </select></label>
+  <label>Group
+    <select name="group">
+      <option value="">none</option>
+      <option value="process" {% if group == "process" %}selected{% endif %}>by process</option>
+      <option value="project" {% if group == "project" %}selected{% endif %}>by project</option>
+    </select></label>
   <input type="hidden" name="ordering" value="{{ ordering }}">
   <span id="ports-spin" class="spinner htmx-indicator" aria-hidden="true"></span>
 </form>
+{% include "portregistry/partials/saved_filters.html" with page="ports" %}
 <div id="ports-table" hx-get="/ports/" hx-trigger="sse:ports, sse:hello" hx-include=".filters" hx-swap="innerHTML">
   {% include "portregistry/partials/ports_table.html" %}
 </div>

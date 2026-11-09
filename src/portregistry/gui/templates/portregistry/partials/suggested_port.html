@@ -1,0 +1,11 @@
+{{ field }}
+<div id="availability" hx-swap-oob="true">
+  {% if error %}
+    <p class="muted">{{ error }}</p>
+  {% else %}
+    <div class="alert ok">Suggested free port <strong class="mono">{{ port }}</strong>: not observed, not reserved, not published by Docker, and a test bind succeeded just now.</div>
+    {% for f in findings %}
+      <div class="finding {{ f.severity }}"><div class="actions"><span class="badge sev-{{ f.severity }}">{{ f.severity }}</span><span class="title">{{ f.title }}</span></div><div class="small">{{ f.explanation }}</div></div>
+    {% endfor %}
+  {% endif %}
+</div>

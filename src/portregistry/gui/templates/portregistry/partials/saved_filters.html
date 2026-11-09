@@ -1,0 +1,16 @@
+<div class="actions saved-filters small">
+  {% if saved_filters %}<span class="muted">Saved:</span>{% endif %}
+  {% for f in saved_filters %}
+    <span class="badge"><a href="{{ f.url }}">{{ f.name }}</a>
+      <form method="post" action="/filters/{{ f.id }}/delete/" class="inline">{% csrf_token %}<button class="linkish" type="submit" title="Delete saved filter" aria-label="Delete saved filter {{ f.name }}">×</button></form></span>
+  {% endfor %}
+  {% if current_query %}
+  <form method="post" action="/filters/save/" class="inline actions">
+    {% csrf_token %}
+    <input type="hidden" name="page" value="{{ page }}">
+    <input type="hidden" name="querystring" value="{{ current_query }}">
+    <input name="name" placeholder="Name this filter" maxlength="80" required size="16" aria-label="Saved filter name">
+    <button class="btn small" type="submit">Save filter</button>
+  </form>
+  {% endif %}
+</div>

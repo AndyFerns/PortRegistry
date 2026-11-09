@@ -9,7 +9,7 @@
           hx-post="/reservations/check/" hx-trigger="input delay:400ms, load" hx-target="#availability" hx-swap="innerHTML">
       {% csrf_token %}
       {% if reservation %}<input type="hidden" name="exclude_id" value="{{ reservation.pk }}">{% endif %}
-      {% include "portregistry/partials/form_fields.html" %}
+      {% include "portregistry/partials/form_fields.html" with suggest=True %}
       <div class="actions" style="margin-top:14px">
         <button class="btn primary" type="submit">Save</button>
         <a class="btn" href="/reservations/">Back</a>

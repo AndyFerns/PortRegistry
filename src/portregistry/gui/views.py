@@ -16,6 +16,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from portregistry.core.application import get_application, has_application
+from portregistry.core.well_known import label_for
 from portregistry.django_app.models import (
     Conflict,
     DiscoveryScan,
@@ -31,6 +32,7 @@ from portregistry.gui.auth import gui_login_required
 from portregistry.gui.forms import ReservationForm, ServiceForm, apply_errors
 from portregistry.services import queries, registry, reservations
 from portregistry.services.conflict_store import active_conflicts
+from portregistry.services.diagnostics import elevation_hint
 from portregistry.services.history import query_events
 from portregistry.services.machines import get_local_machine
 from portregistry.services.registry import SUGGESTED_CATEGORIES
@@ -78,7 +80,15 @@ def _dashboard_context(machine: Machine) -> dict[str, Any]:
             .annotate(n=Count("sockets", filter=Q(sockets__active=True)))
             .order_by("-n", "name")[:6]
         ),
+        "onboarding": _onboarding(machine),
     }
+
+
+def _onboarding(machine: Machine) -> dict[str, Any]:
+    from portregistry.daemon import autostart
+    from portregistry.services.preferences import onboarding_state
+
+    return onboarding_state(machine, autostart_installed=autostart.status().installed)
 
 
 @gui_login_required
@@ -138,8 +148,34 @@ def _ports_context(request: HttpRequest) -> dict[str, Any]:
     index = queries.docker_index()
     docker = {s.pk: queries.docker_matches_for(s, index) for s in rows}
     covered = _covered_socket_ids(rows)
+    classifier = queries.IgnoreClassifier()
+    ignored = {s.pk: classifier.reason(s) for s in rows}
+    labels = {s.pk: label_for(s.port, s.protocol) for s in rows}
+    group = params.get("group", "")
+    groups: list[tuple[str | None, list[Socket]]] = [(None, rows)]
+    if group in ("process", "project"):
+        buckets: dict[str, list[Socket]] = {}
+        for s in rows:
+            proc = s.process
+            if group == "process":
+                key = f"{proc.name or '?'} (pid {proc.pid})" if proc else "Unresolved owner"
+            else:
+                key = proc.project_name if proc and proc.project_name else "No project detected"
+            buckets.setdefault(key, []).append(s)
+        groups = sorted(
+            buckets.items(),
+            key=lambda kv: (kv[0].startswith(("No project", "Unresolved")), kv[0].lower()),
+        )
+    from portregistry.gui.views_extra import querystring_without, saved_filter_links
+
     return {
         "rows": rows,
+        "groups": groups,
+        "group": group,
+        "ignored": ignored,
+        "labels": labels,
+        "saved_filters": saved_filter_links(_machine(), "ports"),
+        "current_query": querystring_without(request, "offset"),
         "docker": docker,
         "covered": covered,
         "total": total,
@@ -183,7 +219,11 @@ def port_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "docker": queries.docker_matches_for(sock, queries.docker_index()),
         "covering": queries.reservations_covering(sock),
         "conflicts": Conflict.objects.filter(active=True, socket=sock),
-        "history": list(query_events(entity_type="socket", entity_id=str(sock.pk))[:20]),
+        "history": list(
+            query_events(entity_type="socket", entity_id=str(sock.pk), include_noise=True)[:20]
+        ),
+        "label": label_for(sock.port, sock.protocol),
+        "ignored": queries.IgnoreClassifier(sock.machine).reason(sock),
         "siblings": Socket.objects.filter(machine=sock.machine, port=sock.port, active=True)
         .exclude(pk=sock.pk)
         .select_related("process"),
@@ -203,7 +243,17 @@ def process_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "same_pid": ProcessInstance.objects.filter(machine=proc.machine, pid=proc.pid)
         .exclude(pk=proc.pk)
         .order_by("-first_seen"),
-        "history": list(query_events(entity_type="process", entity_id=str(proc.pk))[:20]),
+        "history": list(
+            query_events(entity_type="process", entity_id=str(proc.pk), include_noise=True)[:20]
+        ),
+        "parent": ProcessInstance.objects.filter(machine=proc.machine, pid=proc.ppid, active=True)
+        .order_by("-first_seen")
+        .first()
+        if proc.ppid
+        else None,
+        "children": ProcessInstance.objects.filter(machine=proc.machine, ppid=proc.pid, active=True)
+        .exclude(pk=proc.pk)
+        .order_by("name"),
     }
     return render(request, "portregistry/process_detail.html", context)
 
@@ -513,7 +563,27 @@ def history(request: HttpRequest) -> HttpResponse:
     type_prefix = request.GET.get("type", "").strip()
     q = request.GET.get("q", "").strip()
     severity = request.GET.get("severity", "").strip()
-    qs = query_events(type_prefix=type_prefix or None, search=q or None, severity=severity or None)
+    from portregistry.gui.views_extra import querystring_without, saved_filter_links
+
+    include_noise = request.GET.get("noise") == "1"
+    qs = query_events(
+        type_prefix=type_prefix or None,
+        search=q or None,
+        severity=severity or None,
+        include_noise=include_noise,
+    )
+    hidden_noise = (
+        0
+        if include_noise
+        else query_events(
+            type_prefix=type_prefix or None,
+            search=q or None,
+            severity=severity or None,
+            include_noise=True,
+        )
+        .filter(noise=True)
+        .count()
+    )
     offset = _offset(request)
     total = qs.count()
     rows = list(qs[offset : offset + HISTORY_PAGE])
@@ -526,6 +596,10 @@ def history(request: HttpRequest) -> HttpResponse:
         "type": type_prefix,
         "q": q,
         "severity": severity,
+        "include_noise": include_noise,
+        "hidden_noise": hidden_noise,
+        "saved_filters": saved_filter_links(_machine(), "history"),
+        "current_query": querystring_without(request, "offset"),
         "type_choices": [
             "endpoint",
             "process",
@@ -582,7 +656,20 @@ def machine_view(request: HttpRequest) -> HttpResponse:
         {
             "machine": machine,
             "status": queries.status_payload(app, machine) if app else None,
-            "scans": DiscoveryScan.objects.filter(machine=machine).order_by("-started_at")[:15],
+            "scans": DiscoveryScan.objects.filter(machine=machine).order_by("-started_at", "-id")[
+                :15
+            ],
             "config": app.config.as_public_dict() if app else None,
+            "autostart": _autostart_status(),
+            "alerts": app.alerts.describe() if app and app.alerts else None,
+            "elevation_hint": elevation_hint((app.platform_info or {}).get("platform", ""))
+            if app
+            else "",
         },
     )
+
+
+def _autostart_status() -> dict[str, Any]:
+    from portregistry.daemon import autostart
+
+    return autostart.status().as_dict()

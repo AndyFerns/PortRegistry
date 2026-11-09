@@ -3,6 +3,10 @@
 {% block title %}{{ proc.name|default:"Process" }} ({{ proc.pid }}){% endblock %}
 {% block heading %}{{ proc.name|default:"?" }} <span class="muted small">pid {{ proc.pid }}</span> {% if proc.active %}<span class="badge st-ok">active</span>{% else %}<span class="badge">no longer observed</span>{% endif %}{% endblock %}
 {% block content %}
+<div class="actions" style="margin-bottom:12px">
+  {% if proc.active %}<a class="btn primary" href="/adopt/?process={{ proc.pk }}">Register as service</a>{% endif %}
+  {% if proc.name %}<form method="post" action="/processes/{{ proc.pk }}/known/" class="inline">{% csrf_token %}<button class="btn" type="submit" title="Treat every endpoint of this program as known">Mark program as known</button></form>{% endif %}
+</div>
 <div class="grid grid-2">
   <section class="card">
     <h2>Process identity</h2>
@@ -23,7 +27,9 @@
       <dt>Command line</dt><dd class="mono small">{{ proc.cmdline|cmdline|default:"—" }}</dd>
       <dt>Working dir</dt><dd class="mono small">{{ proc.cwd|default:"—" }}</dd>
       <dt>User</dt><dd>{{ proc.username|default:"—" }}</dd>
-      <dt>Parent PID</dt><dd class="mono">{{ proc.ppid|default:"—" }}</dd>
+      <dt>Parent</dt><dd>{% if parent %}<a href="/processes/{{ parent.pk }}/">{{ parent.name|default:"?" }}</a> <span class="mono small">pid {{ parent.pid }}</span>{% else %}<span class="mono">{{ proc.ppid|default:"—" }}</span>{% if proc.ppid %} <span class="small muted">(not owning endpoints)</span>{% endif %}{% endif %}</dd>
+      <dt>Children</dt><dd>{% for c in children %}<a href="/processes/{{ c.pk }}/">{{ c.name|default:"?" }}</a> <span class="mono small">{{ c.pid }}</span>{% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">none owning endpoints</span>{% endfor %}</dd>
+      <dt>Project</dt><dd>{% if proc.project_name %}{{ proc.project_name }} <span class="mono small muted">{{ proc.project_root }}</span>{% else %}—{% endif %}</dd>
     </dl>
     {% if proc.metadata_errors %}<div class="alert info small" style="margin-top:8px">Some fields are restricted by OS permissions: {{ proc.metadata_errors|pretty_json }}</div>{% endif %}
     <p class="small muted">Command lines are displayed for identification only; PortRegistry never executes them and never reads environment variables.</p>

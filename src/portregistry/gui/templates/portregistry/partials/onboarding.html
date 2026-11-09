@@ -1,0 +1,17 @@
+{% if onboarding and not onboarding.dismissed %}
+<section class="card onboarding" style="margin-bottom:14px">
+  <div class="actions" style="justify-content:space-between">
+    <h2 style="margin:0">Getting started <span class="muted small">{{ onboarding.progress }}</span></h2>
+    <form method="post" action="/onboarding/dismiss/" class="inline">{% csrf_token %}<button class="btn small" type="submit">Dismiss</button></form>
+  </div>
+  <ul class="checklist">
+    {% for step in onboarding.steps %}
+      <li class="{% if step.done %}done{% endif %}">
+        <span class="check" aria-hidden="true">{% if step.done %}✓{% else %}○{% endif %}</span>
+        <span><a href="{{ step.link }}">{{ step.title }}</a>{% if step.optional %} <span class="muted small">(optional)</span>{% endif %}
+        {% if not step.done and step.hint %}<br><span class="small muted">{{ step.hint }}</span>{% endif %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

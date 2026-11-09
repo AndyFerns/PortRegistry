@@ -1,0 +1,59 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}Ignore rules{% endblock %}
+{% block heading %}Ignore rules{% endblock %}
+{% block content %}
+<div class="alert info small">
+  Ignore rules mark endpoints you already know about. Matching endpoints are not reported as
+  <em>unregistered listeners</em>, and their history events are hidden as noise. Conflicts that involve a
+  reservation are <strong>never</strong> hidden.
+  {% if noise.ephemeral %}Short-lived UDP sockets on the OS ephemeral range ({{ noise.ephemeral.0 }}–{{ noise.ephemeral.1 }}) are treated as noise automatically.{% endif %}
+  Endpoints that close within {{ noise.flap_window_seconds|floatformat:0 }}s of opening are treated as noise too.
+</div>
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Rules</h2>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Matches</th><th>Effect</th><th></th></tr></thead>
+      <tbody>
+      {% for rule in rules %}
+        <tr class="{% if not rule.enabled %}inactive{% endif %}">
+          <td>{{ rule.name }}</td>
+          <td class="small">{{ describe|get_item:rule.pk }}</td>
+          <td class="small">{% if rule.suppress_conflicts %}no unregistered-listener findings{% endif %}{% if rule.suppress_conflicts and rule.quiet_history %}; {% endif %}{% if rule.quiet_history %}quiet history{% endif %}</td>
+          <td class="nowrap">
+            <form method="post" action="/settings/ignore/{{ rule.pk }}/toggle/" class="inline">{% csrf_token %}<button class="btn small" type="submit">{% if rule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
+            <form method="post" action="/settings/ignore/{{ rule.pk }}/delete/" class="inline">{% csrf_token %}<button class="btn small" type="submit">Delete</button></form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">No rules yet. Use <em>Mark as known</em> on any endpoint or process, or add one here.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  <section class="card">
+    <h2>Add a rule</h2>
+    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-grid">
+        <label for="r-name">Name *</label><div><input id="r-name" name="name" value="{{ values.name|default:'' }}" required maxlength="120"></div>
+        <label for="r-proc">Process name</label><div><input id="r-proc" name="process_name" value="{{ values.process_name|default:'' }}" placeholder="e.g. chrome* (glob, case-insensitive)"></div>
+        <label for="r-exe">Executable path</label><div><input id="r-exe" name="exe" value="{{ values.exe|default:'' }}" placeholder="e.g. */Program Files/*"></div>
+        <label for="r-proto">Protocol</label>
+        <div><select id="r-proto" name="protocol"><option value="">any</option><option value="tcp" {% if values.protocol == "tcp" %}selected{% endif %}>TCP</option><option value="udp" {% if values.protocol == "udp" %}selected{% endif %}>UDP</option></select></div>
+        <label>Ports</label>
+        <div class="actions"><input name="port_min" type="number" min="1" max="65535" value="{{ values.port_min|default:'' }}" placeholder="from" style="width:7em"> – <input name="port_max" type="number" min="1" max="65535" value="{{ values.port_max|default:'' }}" placeholder="to" style="width:7em"></div>
+        <label for="r-addr">Address</label><div><input id="r-addr" name="address" value="{{ values.address|default:'' }}" placeholder="empty = any"></div>
+        <label>Effect</label>
+        <div>
+          <label class="actions small"><input type="checkbox" name="suppress_conflicts" checked> Don't report as unregistered listener</label>
+          <label class="actions small"><input type="checkbox" name="quiet_history" checked> Hide history churn</label>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">Add rule</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

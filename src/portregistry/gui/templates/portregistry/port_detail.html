@@ -3,6 +3,15 @@
 {% block title %}{{ sock|endpoint }}{% endblock %}
 {% block heading %}<span class="mono">{{ sock|endpoint }}</span> {% if sock.active %}<span class="badge st-ok">{{ sock.state }}</span>{% else %}<span class="badge">no longer observed</span>{% endif %}{% endblock %}
 {% block content %}
+<div class="actions" style="margin-bottom:12px">
+  {% if label %}<span class="badge">{{ label }}</span>{% endif %}
+  {% if ignored %}<span class="badge st-muted" title="Not reported as an unregistered listener">{{ ignored }}</span>{% endif %}
+  {% if sock.active %}
+    <a class="btn primary" href="/adopt/?socket={{ sock.pk }}">Register as service</a>
+    {% if not ignored %}<form method="post" action="/ports/{{ sock.pk }}/known/" class="inline">{% csrf_token %}<button class="btn" type="submit" title="Stop reporting this endpoint as unregistered">Mark as known</button></form>{% endif %}
+  {% endif %}
+  <a class="btn" href="/ports/timeline/?port={{ sock.port }}&protocol={{ sock.protocol }}">Timeline</a>
+</div>
 <div class="grid grid-2">
   <section class="card">
     <h2>Endpoint</h2>
@@ -24,6 +33,7 @@
         <dt>PID</dt><dd class="mono">{{ p.pid }}</dd>
         <dt>Started</dt><dd>{{ p.started_at|ago }}</dd>
         <dt>User</dt><dd>{{ p.username|default:"—" }}</dd>
+        <dt>Project</dt><dd>{% if p.project_name %}{{ p.project_name }} <span class="mono small muted">{{ p.project_root }}</span>{% else %}—{% endif %}</dd>
         <dt>Executable</dt><dd class="mono small">{{ p.exe|default:"—" }}</dd>
         <dt>Command line</dt><dd class="mono small">{{ p.cmdline|cmdline|default:"—" }}</dd>
         <dt>Identity</dt><dd class="mono small">{{ p.identity_key }}{% if not p.identity_complete %} <span class="badge sev-warning">incomplete</span>{% endif %}</dd>

@@ -7,7 +7,7 @@
     <tr>
       <td class="small nowrap" title="{{ e.timestamp|date:'c' }}">{{ e.timestamp|date:"Y-m-d H:i:s" }}<br><span class="muted">{{ e.timestamp|ago }}</span></td>
       <td class="small mono">{{ e.type }}</td>
-      <td><span class="badge {{ e.severity|sev_class }}">{{ e.severity }}</span></td>
+      <td><span class="badge {{ e.severity|sev_class }}">{{ e.severity }}</span>{% if e.noise %} <span class="badge st-muted" title="Short-lived, ephemeral or ignored">noise</span>{% endif %}</td>
       <td>{{ e.summary }}</td>
       <td>{% if e.details %}<details><summary class="small">show</summary><pre>{{ e.details|pretty_json }}</pre></details>{% endif %}</td>
     </tr>

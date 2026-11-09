@@ -43,6 +43,29 @@
     <h2>Platform &amp; permissions</h2>
     <p>Platform: {{ status.platform.platform }} · elevated: {% if status.platform.elevated %}yes{% elif status.platform.elevated is None %}unknown{% else %}no{% endif %}</p>
     <ul class="small">{% for note in status.platform.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+    {% if status.platform.elevated is not True %}<div class="alert info small"><strong>Fuller visibility:</strong> {{ elevation_hint }}</div>{% endif %}
+  </section>
+</div>
+<div class="grid grid-2" style="margin-top:14px">
+  <section class="card">
+    <h2>Start at login</h2>
+    {% if autostart.installed %}
+      <p><span class="badge st-ok">installed</span> via {{ autostart.mechanism }}{% if autostart.tray_installed %} (tray icon too){% endif %}.</p>
+      <p class="small muted">Remove with <code>portregistry daemon uninstall</code>.</p>
+    {% else %}
+      <p><span class="badge">not installed</span> The daemon only runs when you start it, so data goes stale after a reboot.</p>
+      <p class="small">Run <code>portregistry daemon install</code> (add <code>--tray</code> for the tray icon, <code>--dry-run</code> to preview). No administrator rights are needed.</p>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>Alerts</h2>
+    {% if alerts and alerts.webhooks %}
+      <ul class="small">{% for w in alerts.webhooks %}<li class="mono">{{ w.url }} — min {{ w.min_severity }}{% if w.signed %}, signed{% endif %}</li>{% endfor %}</ul>
+      <p class="small muted">Delivered {{ alerts.delivered }}, failed {{ alerts.failed }}{% if alerts.dropped %}, dropped {{ alerts.dropped }}{% endif %}. Test with <code>portregistry alerts test</code>.</p>
+    {% else %}
+      <p class="small">No webhooks configured. Add <code>[[alerts.webhook]]</code> entries to <code>config.toml</code>. Browser notifications: use “Desktop alerts” in the sidebar.</p>
+    {% endif %}
+    <p class="small muted">Ignore rules: <a href="/settings/ignore/">manage</a>. Rotate the API token with <code>portregistry token rotate</code>.</p>
   </section>
 </div>
 {% endif %}
