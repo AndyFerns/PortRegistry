@@ -99,6 +99,9 @@ class FakeClient:
             raise DaemonNotRunningError("Cannot reach the PortRegistry daemon")
         if path == "status/":
             return STATUS
+        extra = await self.get_extra(path, **params)
+        if extra is not None:
+            return extra
         return {"id": 1, "path": path}
 
     async def results(self, path, **params):
@@ -141,8 +144,33 @@ class FakeClient:
             ],
         }.get(path, [])
 
+    async def get_extra(self, path, **params):
+        if path == "services/adopt/":
+            return {
+                "source": "process node (pid 42)",
+                "socket_id": params.get("socket"),
+                "service": {
+                    "name": "shop",
+                    "category": "web",
+                    "description": "",
+                    "expected_executable": "node",
+                    "expected_working_directory": "/srv/shop",
+                },
+                "endpoints": [{"socket_id": 1, "endpoint": "tcp 0.0.0.0:8080", "selected": True}],
+            }
+        if path == "ports/free/":
+            return {"ports": [{"port": 3005, "protocol": "tcp"}]}
+        return None
+
     async def post(self, path, body=None):
         self.posts.append((path, body))
+        if path == "ports/1/known/":
+            return {"id": 3, "name": "Known: node on tcp 0.0.0.0:8080"}
+        if path == "services/adopt/":
+            return {
+                "service": {"id": 5, "name": body["service"]["name"]},
+                "reservations": [{"id": 1}],
+            }
         if path == "services/" and not (body or {}).get("name"):
             raise ApiError(
                 400,
@@ -179,7 +207,7 @@ def test_tables_populated_and_markup_not_interpreted():
             ports = app.query_one("#ports-table", DataTable)
             assert ports.row_count == 2
             # Untrusted process name rendered literally, not as rich markup.
-            assert str(ports.get_row_at(0)[5]) == "[bold]evil[/bold]"
+            assert str(ports.get_row_at(0)[6]) == "[bold]evil[/bold]"
             assert app.query_one("#reservations-table", DataTable).row_count == 1
             assert app.query_one("#conflicts-table", DataTable).row_count == 1
             assert app.query_one("#history-table", DataTable).row_count == 1
@@ -288,5 +316,50 @@ def test_daemon_unreachable_shows_offline_state():
             status = app.query_one("#status", Static)
             assert "unreachable" in str(status.render())
             assert status.has_class("offline")
+
+    run(scenario())
+
+
+def test_mark_known_adopt_and_noise_keys():
+    async def scenario():
+        client = FakeClient()
+        app = PortRegistryApp(lambda: client, live_updates=False)
+        async with app.run_test(size=(140, 45)) as pilot:
+            await pilot.pause(0.2)
+            app.action_show_tab("ports")
+            app.query_one("#ports-table", DataTable).focus()
+            await pilot.press("k")
+            await pilot.pause(0.2)
+            assert ("ports/1/known/", None) in client.posts
+            await pilot.press("s")
+            await pilot.pause(0.3)
+            from portregistry.tui.screens import AdoptScreen
+
+            assert isinstance(app.screen, AdoptScreen)
+            assert app.screen.query_one("#name", Input).value == "shop"
+            app.screen.query_one("#name", Input).value = "shop-web"
+            await pilot.click("#save")
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, AdoptScreen)
+            sent = [b for p, b in client.posts if p == "services/adopt/"][0]
+            assert sent["service"]["name"] == "shop-web" and sent["socket_ids"] == [1]
+            await pilot.press("z")
+            await pilot.pause(0.3)
+            assert any(p == "history/" and q.get("noise") == "1" for p, q in client.queries)
+
+    run(scenario())
+
+
+def test_reservation_form_suggests_free_port():
+    async def scenario():
+        client = FakeClient()
+        app = PortRegistryApp(lambda: client, live_updates=False)
+        async with app.run_test(size=(140, 45)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("n")
+            await pilot.pause(0.2)
+            await pilot.click("#suggest")
+            await pilot.pause(0.3)
+            assert app.screen.query_one("#port", Input).value == "3005"
 
     run(scenario())
