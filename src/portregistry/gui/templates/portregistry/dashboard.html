@@ -1,0 +1,8 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block heading %}Dashboard <span class="muted small">{{ machine.hostname }}</span>{% endblock %}
+{% block content %}
+<div id="dashboard-body" hx-get="/partials/dashboard/" hx-trigger="sse:scan, sse:conflicts, sse:registry, sse:docker, sse:hello" hx-swap="innerHTML">
+  {% include "portregistry/partials/dashboard_body.html" %}
+</div>
+{% endblock %}

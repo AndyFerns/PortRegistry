@@ -1,0 +1,58 @@
+{% load pr_format %}
+{% with e=summary.endpoints c=summary.conflicts r=summary.reservations f=summary.freshness %}
+{% if f.stale %}
+<div class="alert warn">Discovery data is stale (last complete scan {{ f.last_success_at|ago }}). Displayed endpoints may not reflect the current machine state.</div>
+{% endif %}
+<div class="stats">
+  <div class="stat"><a href="/ports/"><div class="label">Endpoints</div><div class="value">{{ e.total }}</div>
+    <div class="sub">{{ e.tcp }} TCP · {{ e.udp }} UDP · {{ e.unique_ports }} ports</div></a></div>
+  <div class="stat"><div class="label">Address families</div><div class="value">{{ e.ipv4 }} / {{ e.ipv6 }}</div>
+    <div class="sub">IPv4 / IPv6</div></div>
+  <div class="stat"><div class="label">Processes</div><div class="value">{{ summary.processes }}</div>
+    <div class="sub">{{ e.unresolved_owner }} endpoints with unknown owner</div></div>
+  <div class="stat"><a href="/services/"><div class="label">Services</div><div class="value">{{ summary.services }}</div>
+    <div class="sub">registered</div></a></div>
+  <div class="stat"><a href="/reservations/"><div class="label">Reservations</div><div class="value">{{ r.active }}</div>
+    <div class="sub">{% if r.attention %}<span class="badge sev-warning">{{ r.attention }} need attention</span>{% else %}{{ r.released }} released{% endif %}</div></a></div>
+  <div class="stat"><a href="/conflicts/"><div class="label">Conflicts</div><div class="value">{{ c.actionable }}</div>
+    <div class="sub"><span class="badge sev-error">{{ c.error }}</span> <span class="badge sev-warning">{{ c.warning }}</span> <span class="badge sev-info">{{ c.info }} info</span></div></a></div>
+  <div class="stat"><a href="/containers/"><div class="label">Containers</div><div class="value">{{ summary.containers.running }}</div>
+    <div class="sub">running of {{ summary.containers.present }} known · Docker {{ pr_docker.state|default:"unknown" }}</div></a></div>
+  <div class="stat"><div class="label">Last complete scan</div><div class="value" style="font-size:18px">{{ f.last_success_at|ago }}</div>
+    <div class="sub">every {{ pr_native_interval|floatformat:0 }}s{% if f.complete_protocols %} · {{ f.complete_protocols|join:", " }}{% endif %}</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Actionable conflicts</h2>
+    {% for conflict in top_conflicts %}
+      {% include "portregistry/partials/conflict_card.html" with conflict=conflict compact=True %}
+    {% empty %}
+      <p class="muted">No warnings or errors.{% if c.info %} {{ c.info }} informational findings (e.g. unregistered listeners) are on the <a href="/conflicts/?info=1">conflicts page</a>.{% endif %}</p>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Recent changes</h2>
+    <div id="recent-events" hx-get="/partials/recent-events/" hx-trigger="sse:history" hx-swap="innerHTML">
+      {% include "portregistry/partials/recent_events.html" %}
+    </div>
+  </section>
+</div>
+
+<section class="card" style="margin-top:14px">
+  <h2>Busiest processes</h2>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Process</th><th>PID</th><th>User</th><th class="right">Endpoints</th><th>Executable</th></tr></thead>
+    <tbody>
+    {% for p in busiest %}
+      <tr><td><a href="/processes/{{ p.pk }}/">{{ p.name|default:"?" }}</a></td><td class="mono">{{ p.pid }}</td>
+        <td>{{ p.username|default:"—" }}</td><td class="right">{{ p.n }}</td><td class="mono small">{{ p.exe|default:"—" }}</td></tr>
+    {% empty %}
+      <tr><td colspan="5" class="empty">No processes observed yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endwith %}

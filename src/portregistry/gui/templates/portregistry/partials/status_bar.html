@@ -1,0 +1,19 @@
+{% load pr_format %}
+{% if fresh.last_scan_status %}
+  {% if fresh.stale %}
+    <span class="badge sev-warning" title="Last complete scan is older than {{ fresh.stale_after_seconds|floatformat:0 }}s">Stale: last complete scan {{ fresh.last_success_at|ago }}</span>
+  {% else %}
+    <span class="badge st-ok" title="Last complete native scan">Scanned {{ fresh.last_success_at|ago }}</span>
+  {% endif %}
+  {% if fresh.last_scan_status != "complete" %}
+    <span class="badge {{ fresh.last_scan_status|sev_class }}">Last scan {{ fresh.last_scan_status }}</span>
+  {% endif %}
+{% else %}
+  <span class="badge sev-warning">No scan yet</span>
+{% endif %}
+{% if fresh.restricted_process_count or fresh.unknown_owner_count %}
+  <span class="badge sev-info" title="Some process metadata or owners are hidden by OS permissions. PortRegistry never elevates privileges automatically.">Limited visibility</span>
+{% endif %}
+{% if pr_docker %}
+  <a href="/containers/" class="badge {{ pr_docker.state|sev_class }}" title="{{ pr_docker.message }}">Docker: {{ pr_docker.state }}</a>
+{% endif %}

@@ -1,0 +1,10 @@
+{% load pr_format %}
+<ul class="timeline">
+{% for e in recent_events %}
+  <li><span class="muted small nowrap" title="{{ e.timestamp|date:'c' }}">{{ e.timestamp|ago }}</span>
+      <span><span class="badge {{ e.severity|sev_class }}">{{ e.type }}</span> {{ e.summary }}</span></li>
+{% empty %}
+  <li><span></span><span class="muted">No history yet.</span></li>
+{% endfor %}
+</ul>
+<p class="small"><a href="/history/">Full history →</a></p>
