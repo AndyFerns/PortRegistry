@@ -129,6 +129,38 @@ def ports_queryset(params: dict[str, str]) -> QuerySet[Socket]:
     return qs.order_by(*PORT_ORDERINGS.get(ordering, PORT_ORDERINGS["port"]))
 
 
+class IgnoreClassifier:
+    """Explains why an endpoint is not reported as an unregistered listener."""
+
+    def __init__(self, machine: Machine | None = None) -> None:
+        from portregistry.services.ignore_rules import active_rule_views, noise_settings
+
+        machine = machine or Machine.objects.filter(is_local=True).first()
+        self.rules = active_rule_views(machine) if machine else []
+        self.ephemeral = noise_settings().ephemeral
+
+    def reason(self, sock: Socket) -> str | None:
+        if not sock.active:
+            return None
+        if (
+            self.ephemeral
+            and sock.protocol == "udp"
+            and self.ephemeral[0] <= sock.port <= self.ephemeral[1]
+        ):
+            return "ephemeral UDP port"
+        proc = sock.process
+        for rule in self.rules:
+            if rule.suppress_conflicts and rule.matches(
+                protocol=sock.protocol,
+                port=sock.port,
+                address=sock.address,
+                process_name=proc.name if proc else None,
+                exe=proc.exe if proc else None,
+            ):
+                return f"known: {rule.name}"
+        return None
+
+
 def processes_queryset(params: dict[str, str]) -> QuerySet[ProcessInstance]:
     qs = ProcessInstance.objects.select_related("machine").annotate(
         active_socket_count=Count("sockets", filter=Q(sockets__active=True))
@@ -200,7 +232,7 @@ def latest_scan(machine: Machine, kind: str = "native") -> DiscoveryScan | None:
     return (
         DiscoveryScan.objects.filter(machine=machine, kind=kind)
         .exclude(status="running")
-        .order_by("-started_at")
+        .order_by("-started_at", "-id")
         .first()
     )
 
@@ -208,7 +240,7 @@ def latest_scan(machine: Machine, kind: str = "native") -> DiscoveryScan | None:
 def last_successful_scan(machine: Machine, kind: str = "native") -> DiscoveryScan | None:
     return (
         DiscoveryScan.objects.filter(machine=machine, kind=kind, status="complete")
-        .order_by("-started_at")
+        .order_by("-started_at", "-id")
         .first()
     )
 

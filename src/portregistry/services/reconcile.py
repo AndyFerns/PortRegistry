@@ -34,7 +34,13 @@ from portregistry.core.identity import (
 from portregistry.core.types import NativeScanResult, ProcessInfo, ScanScope, ScanStatus
 from portregistry.django_app.models import DiscoveryScan, Machine, ProcessInstance, Socket
 from portregistry.services.db import write_transaction
-from portregistry.services.history import EventSpec, notify, record_events
+from portregistry.services.history import (
+    EventSpec,
+    last_event_time,
+    mark_noise,
+    notify,
+    record_events,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +156,16 @@ def _owner_label(proc: ProcessInstance | None, pid: int | None) -> str:
     return "unknown process"
 
 
-_PROCESS_FIELDS = ("name", "exe", "username", "ppid", "cwd", "cmdline")
+_PROCESS_FIELDS = (
+    "name",
+    "exe",
+    "username",
+    "ppid",
+    "cwd",
+    "cmdline",
+    "project_name",
+    "project_root",
+)
 
 
 def _apply_process_metadata(proc: ProcessInstance, info: ProcessInfo) -> list[str]:
@@ -163,6 +178,8 @@ def _apply_process_metadata(proc: ProcessInstance, info: ProcessInfo) -> list[st
         "ppid": info.ppid,
         "cwd": info.cwd,
         "cmdline": info.cmdline,
+        "project_name": info.project_name,
+        "project_root": info.project_root,
     }
     for field_name in _PROCESS_FIELDS:
         new = values[field_name]
@@ -202,6 +219,8 @@ def _new_process(
         username=info.username or "",
         ppid=info.ppid,
         cwd=info.cwd or "",
+        project_name=info.project_name or "",
+        project_root=info.project_root or "",
         metadata_errors=dict(info.errors),
         first_seen=now,
         last_seen=now,
@@ -222,7 +241,7 @@ def apply_native_scan(
             DiscoveryScan.objects.filter(machine=machine, kind="native")
             .exclude(pk=scan.pk)
             .exclude(status="running")
-            .order_by("-started_at")
+            .order_by("-started_at", "-id")
             .first()
         )
         events: list[EventSpec] = []
@@ -420,8 +439,14 @@ def apply_native_scan(
                 )
             )
         else:
-            events.extend(_endpoint_events(appeared, disappeared, summary))
+            noise = _NoiseClassifier(machine, now)
+            events.extend(_endpoint_events(appeared, disappeared, summary, noise))
+            noisy_by_proc: dict[int, list[bool]] = defaultdict(list)
+            for sock, owner in [*appeared, *disappeared]:
+                if owner is not None:
+                    noisy_by_proc[owner.pk].append(noise.is_noise(sock, owner))
             for proc in [*new_processes, *reactivated]:
+                flags = noisy_by_proc.get(proc.pk, [])
                 events.append(
                     EventSpec(
                         "process.appeared",
@@ -434,9 +459,12 @@ def apply_native_scan(
                             "exe": proc.exe,
                             "identity_complete": proc.identity_complete,
                         },
+                        noise=bool(flags) and all(flags),
                     )
                 )
             for proc in gone:
+                flags = noisy_by_proc.get(proc.pk, [])
+                flapped = noise.flapped("process", proc.pk, "process.appeared")
                 events.append(
                     EventSpec(
                         "process.disappeared",
@@ -444,6 +472,7 @@ def apply_native_scan(
                         entity_type="process",
                         entity_id=proc.pk,
                         details={"pid": proc.pid, "name": proc.name},
+                        noise=flapped or (bool(flags) and all(flags)),
                     )
                 )
 
@@ -457,10 +486,57 @@ def apply_native_scan(
     return summary
 
 
+class _NoiseClassifier:
+    """Decides which history events are churn (hidden by default, purged sooner).
+
+    * UDP sockets on the OS ephemeral range (client sockets of browsers, DNS...).
+    * Endpoints matched by an ignore rule with ``quiet_history``.
+    * Flapping: an endpoint/process that goes away within ``flap_window_seconds``
+      of appearing; its earlier "appeared" event is marked as noise too.
+    """
+
+    def __init__(self, machine: Machine, now: datetime) -> None:
+        from portregistry.services.ignore_rules import active_rule_views, noise_settings
+
+        settings = noise_settings()
+        self.rules = [r for r in active_rule_views(machine) if r.quiet_history]
+        self.ephemeral = settings.ephemeral
+        self.window = settings.flap_window_seconds
+        self.now = now
+
+    def is_noise(self, sock: Socket, proc: ProcessInstance | None) -> bool:
+        if (
+            self.ephemeral is not None
+            and sock.protocol == "udp"
+            and self.ephemeral[0] <= sock.port <= self.ephemeral[1]
+        ):
+            return True
+        return any(
+            rule.matches(
+                protocol=sock.protocol,
+                port=sock.port,
+                address=sock.address,
+                process_name=proc.name if proc else None,
+                exe=proc.exe if proc else None,
+            )
+            for rule in self.rules
+        )
+
+    def flapped(self, entity_type: str, entity_id: int, appear_type: str) -> bool:
+        if self.window <= 0:
+            return False
+        appeared_at = last_event_time(entity_type, entity_id, appear_type)
+        if appeared_at is None or (self.now - appeared_at).total_seconds() > self.window:
+            return False
+        mark_noise(entity_type, entity_id, appear_type, appeared_at)
+        return True
+
+
 def _endpoint_events(
     appeared: list[tuple[Socket, ProcessInstance | None]],
     disappeared: list[tuple[Socket, ProcessInstance | None]],
     summary: NativeReconcileSummary,
+    noise: _NoiseClassifier | None = None,
 ) -> list[EventSpec]:
     """Endpoint events, pairing disappear+appear of the same endpoint as an owner change."""
     events: list[EventSpec] = []
@@ -488,6 +564,9 @@ def _endpoint_events(
                         "previous_socket_id": old_sock.pk,
                         "previous": _process_summary(old_proc, old_sock.pid),
                     },
+                    noise=bool(
+                        noise and noise.is_noise(sock, proc) and noise.is_noise(old_sock, old_proc)
+                    ),
                 )
             )
             continue
@@ -498,6 +577,7 @@ def _endpoint_events(
                 entity_type="socket",
                 entity_id=sock.pk,
                 details=_socket_details(sock, proc),
+                noise=bool(noise and noise.is_noise(sock, proc)),
             )
         )
     for remaining in gone_by_endpoint.values():
@@ -510,6 +590,13 @@ def _endpoint_events(
                     entity_type="socket",
                     entity_id=sock.pk,
                     details=_socket_details(sock, proc),
+                    noise=bool(
+                        noise
+                        and (
+                            noise.is_noise(sock, proc)
+                            or noise.flapped("socket", sock.pk, "endpoint.appeared")
+                        )
+                    ),
                 )
             )
     # Owner changes counted separately; keep appeared/disappeared as pure counts.

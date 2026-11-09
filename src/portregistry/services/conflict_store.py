@@ -46,10 +46,10 @@ def build_discovery_view(machine: Machine) -> DiscoveryView:
     finished = DiscoveryScan.objects.filter(machine=machine, kind="native").exclude(
         status="running"
     )
-    latest_full = finished.filter(scope_port__isnull=True).order_by("-started_at").first()
+    latest_full = finished.filter(scope_port__isnull=True).order_by("-started_at", "-id").first()
     last_complete = (
         finished.filter(status="complete", scope_port__isnull=True, scope_protocols="tcp,udp")
-        .order_by("-started_at")
+        .order_by("-started_at", "-id")
         .first()
     )
     complete_protocols: frozenset[str] = frozenset()
@@ -154,12 +154,16 @@ def build_snapshot(machine: Machine) -> Snapshot:
         ).select_related("container")
         if m.host_port is not None
     ]
+    from portregistry.services.ignore_rules import active_rule_views, noise_settings
+
     return Snapshot(
         sockets=sockets,
         reservations=reservations,
         services=services,
         docker_mappings=mappings,
         discovery=build_discovery_view(machine),
+        ignore_rules=active_rule_views(machine),
+        ephemeral=noise_settings().ephemeral,
     )
 
 
@@ -273,7 +277,13 @@ def refresh_conflicts(machine: Machine) -> RefreshSummary:
                         f"Resolved: {row.title}",
                         entity_type="conflict",
                         entity_id=fp,
-                        details={"type": row.type, "reservation_id": row.reservation_id},
+                        details={
+                            "type": row.type,
+                            "severity": row.severity,
+                            "certainty": row.certainty,
+                            "reservation_id": row.reservation_id,
+                            "service_id": row.service_id,
+                        },
                     )
                 )
         record_events(machine, events, now)

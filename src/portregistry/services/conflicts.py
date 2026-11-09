@@ -41,6 +41,7 @@ from portregistry.core.addresses import (
     endpoint_overlap,
     format_endpoint,
 )
+from portregistry.core.ignore import IgnoreRuleView, is_ephemeral
 
 
 class ConflictType(StrEnum):
@@ -186,6 +187,34 @@ class Snapshot:
     services: dict[int, ServiceView] = field(default_factory=dict)
     docker_mappings: list[DockerMappingView] = field(default_factory=list)
     discovery: DiscoveryView = field(default_factory=DiscoveryView)
+    #: User ignore rules: matching endpoints are not "unregistered listeners".
+    ignore_rules: list[IgnoreRuleView] = field(default_factory=list)
+    #: OS ephemeral range; UDP sockets inside it are client churn, not listeners.
+    #: None disables the ephemeral-UDP exemption.
+    ephemeral: tuple[int, int] | None = None
+
+
+def socket_is_ignored(
+    sock: SocketView, snap: Snapshot, *, purpose: str = "conflicts"
+) -> str | None:
+    """Why an endpoint is exempt from unregistered-listener reporting / history, if it is."""
+    if (
+        snap.ephemeral is not None
+        and sock.protocol == "udp"
+        and is_ephemeral(sock.port, snap.ephemeral)
+    ):
+        return "ephemeral UDP port"
+    for rule in snap.ignore_rules:
+        wanted = rule.suppress_conflicts if purpose == "conflicts" else rule.quiet_history
+        if wanted and rule.matches(
+            protocol=sock.protocol,
+            port=sock.port,
+            address=sock.address,
+            process_name=sock.process_name,
+            exe=sock.exe,
+        ):
+            return f"ignore rule '{rule.name}'"
+    return None
 
 
 @dataclass(frozen=True)
@@ -651,7 +680,7 @@ def unregistered_findings(snap: Snapshot) -> list[Finding]:
             )
             for r in snap.reservations
         )
-        if covered:
+        if covered or socket_is_ignored(sock, snap):
             continue
         verb = "listening on" if sock.protocol == "tcp" else "bound to"
         findings.append(

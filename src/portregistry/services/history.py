@@ -32,6 +32,7 @@ _TOPIC_BY_PREFIX = {
     "discovery": "scan",
     "service": "registry",
     "reservation": "registry",
+    "ignore": "registry",
     "conflict": "conflicts",
     "container": "docker",
     "docker": "docker",
@@ -52,6 +53,7 @@ class EventSpec:
     entity_type: str = ""
     entity_id: str | int = ""
     details: dict[str, Any] = field(default_factory=dict)
+    noise: bool = False
 
 
 def notify(topic: str, type_: str, data: dict[str, Any] | None = None) -> None:
@@ -80,6 +82,7 @@ def record_events(
             entity_id=str(spec.entity_id),
             summary=spec.summary[:300],
             details=spec.details,
+            noise=spec.noise,
         )
         for spec in specs
     ]
@@ -89,8 +92,30 @@ def record_events(
         topics.setdefault(topic_for(spec.type), []).append(spec.type)
     for topic, types in topics.items():
         notify(topic, "history.recorded", {"types": sorted(set(types)), "count": len(types)})
-    notify("history", "history.recorded", {"count": len(specs)})
+    if not all(spec.noise for spec in specs):
+        notify("history", "history.recorded", {"count": len(specs)})
+    for spec in specs:
+        alert = alert_for(spec)
+        if alert is not None:
+            notify("alerts", alert[0], alert[1])
     return created
+
+
+def alert_for(spec: EventSpec) -> tuple[str, dict[str, Any]] | None:
+    """Map a history event to an alert (topic ``alerts``) if it is alert-worthy."""
+    base = {
+        "summary": spec.summary,
+        "entity_type": spec.entity_type,
+        "entity_id": str(spec.entity_id),
+    }
+    if spec.type in ("conflict.detected", "conflict.resolved"):
+        severity = str(spec.details.get("severity") or spec.severity)
+        return spec.type, {**base, "severity": severity, **spec.details}
+    if spec.type in ("docker.unavailable", "docker.available"):
+        return spec.type, {**base, "severity": spec.severity, **spec.details}
+    if spec.type == "scan.status_changed" and spec.details.get("current") == "failed":
+        return "scan.failed", {**base, "severity": "warning", **spec.details}
+    return None
 
 
 def query_events(
@@ -102,8 +127,11 @@ def query_events(
     severity: str | None = None,
     since: datetime | None = None,
     search: str | None = None,
+    include_noise: bool = False,
 ) -> QuerySet[Event]:
     qs = Event.objects.all()
+    if not include_noise:
+        qs = qs.filter(noise=False)
     if machine is not None:
         qs = qs.filter(machine=machine)
     if type_prefix:
@@ -126,9 +154,29 @@ def event_type_counts(machine: Machine | None = None) -> dict[str, int]:
     return {row["type"]: row["n"] for row in qs.values("type").annotate(n=Count("id"))}
 
 
-def cleanup(retention_days: int, now: datetime | None = None) -> dict[str, int]:
+def mark_noise(entity_type: str, entity_id: str | int, event_type: str, since: datetime) -> int:
+    """Retroactively mark recent events of an entity as noise (flap suppression)."""
+    return Event.objects.filter(
+        entity_type=entity_type, entity_id=str(entity_id), type=event_type, timestamp__gte=since
+    ).update(noise=True)
+
+
+def last_event_time(entity_type: str, entity_id: str | int, event_type: str) -> datetime | None:
+    row = (
+        Event.objects.filter(entity_type=entity_type, entity_id=str(entity_id), type=event_type)
+        .order_by("-timestamp")
+        .values_list("timestamp", flat=True)
+        .first()
+    )
+    return row
+
+
+def cleanup(
+    retention_days: int, now: datetime | None = None, noise_retention_days: int | None = None
+) -> dict[str, int]:
     """Delete history and inactive observations older than the retention window.
 
+    Noise events (ephemeral/flapping/ignored churn) use a shorter window.
     User-defined services and reservations are never deleted here.
     """
     now = now or timezone.now()
@@ -136,6 +184,11 @@ def cleanup(retention_days: int, now: datetime | None = None) -> dict[str, int]:
     counts: dict[str, int] = {}
     with write_transaction():
         counts["events"] = Event.objects.filter(timestamp__lt=cutoff).delete()[0]
+        if noise_retention_days is not None:
+            noise_cutoff = now - timedelta(days=noise_retention_days)
+            counts["noise_events"] = Event.objects.filter(
+                noise=True, timestamp__lt=noise_cutoff
+            ).delete()[0]
         counts["conflicts"] = Conflict.objects.filter(
             active=False, resolved_at__lt=cutoff
         ).delete()[0]
@@ -151,7 +204,7 @@ def cleanup(retention_days: int, now: datetime | None = None) -> dict[str, int]:
         # Keep the most recent scan of each kind so freshness is always known.
         keep_ids = []
         for kind in ("native", "docker"):
-            latest = DiscoveryScan.objects.filter(kind=kind).order_by("-started_at").first()
+            latest = DiscoveryScan.objects.filter(kind=kind).order_by("-started_at", "-id").first()
             if latest:
                 keep_ids.append(latest.pk)
         counts["scans"] = (
