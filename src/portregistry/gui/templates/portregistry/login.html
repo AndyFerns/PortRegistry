@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · PortRegistry</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/portregistry/app.css?v={{ pr_version }}">
+</head>
+<body class="bare">
+<div class="login card">
+  <h1>PortRegistry</h1>
+  <p class="muted">This GUI is served by your local PortRegistry daemon.</p>
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+  <p>The easiest way in is to run <code>portregistry gui</code>, which opens a single-use login link.</p>
+  <p>Or paste the local API token{% if token_path %} (stored in <code>{{ token_path }}</code>){% endif %}:</p>
+  <form method="post" action="/login/">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="actions">
+      <input type="password" name="token" aria-label="API token" placeholder="API token" autocomplete="off" required style="flex:1">
+      <button class="btn primary" type="submit">Sign in</button>
+    </div>
+  </form>
+</div>
+</body>
+</html>

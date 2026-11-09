@@ -1,0 +1,62 @@
+{% load pr_format %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":0,"selfRequestsOnly":true}'>
+  <title>{% block title %}Dashboard{% endblock %} · PortRegistry</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/portregistry/app.css?v={{ pr_version }}">
+  <script src="/static/portregistry/vendor/htmx.min.js?v=2.0.4" defer></script>
+  <script src="/static/portregistry/vendor/htmx-ext-sse.js?v=2.2.2" defer></script>
+  <script src="/static/portregistry/app.js?v={{ pr_version }}" defer></script>
+</head>
+<body hx-ext="sse" sse-connect="/api/v1/events/stream/" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% with n=request.resolver_match.url_name %}
+<nav class="sidebar" aria-label="Main">
+  <a class="brand" href="/"><span class="brand-mark">PR</span> PortRegistry</a>
+  <div class="nav">
+    <a href="/" class="{% if n == 'gui-dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="/ports/" class="{% if n == 'gui-ports' or n == 'gui-port' or n == 'gui-process' %}active{% endif %}">Ports</a>
+    <a href="/services/" class="{% if 'gui-service' in n %}active{% endif %}">Services</a>
+    <a href="/reservations/" class="{% if 'gui-reservation' in n %}active{% endif %}">Reservations</a>
+    <a href="/conflicts/" class="{% if n == 'gui-conflicts' %}active{% endif %}">Conflicts</a>
+    <a href="/history/" class="{% if n == 'gui-history' %}active{% endif %}">History</a>
+    <a href="/containers/" class="{% if n == 'gui-containers' %}active{% endif %}">Containers</a>
+    <a href="/machine/" class="{% if n == 'gui-machine' %}active{% endif %}">Machine</a>
+  </div>
+  <div class="sidebar-foot">
+    PortRegistry {{ pr_version }}<br>
+    <span class="muted">Press <kbd>/</kbd> to search</span>
+    <form method="post" action="/logout/">{% csrf_token %}<button class="btn small" type="submit">Log out</button></form>
+  </div>
+</nav>
+{% endwith %}
+<main>
+  <div class="alert error offline-banner" role="status">
+    Disconnected from the PortRegistry daemon. Data on this page may be stale; reconnecting automatically.
+  </div>
+  <div class="topbar">
+    <h1>{% block heading %}{% endblock %}</h1>
+    <div class="topbar-right">
+      <div id="statusbar" class="statusbar" hx-get="/partials/status-bar/"
+           hx-trigger="load, sse:scan, sse:docker, sse:hello, every 30s" aria-live="polite">
+        <span class="badge">Loading status…</span>
+      </div>
+      <span id="conn" class="badge dot" data-state="connecting" title="Connecting to live updates">Connecting</span>
+      <form class="inline" hx-post="/scan/" hx-target="#scan-result" hx-indicator="#scan-spin">
+        <button class="btn small" type="submit">Scan now</button>
+        <span id="scan-spin" class="spinner htmx-indicator" aria-hidden="true"></span>
+        <span id="scan-result" class="small"></span>
+      </form>
+    </div>
+  </div>
+  {% if messages %}
+  <ul class="messages">
+    {% for message in messages %}<li class="alert {{ message.tags }}">{{ message }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
