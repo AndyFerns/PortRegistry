@@ -114,8 +114,57 @@ jobs:
           curl -fsS http://127.0.0.1:18765/api/v1/health/
           /tmp/smoke/bin/portregistry status
           /tmp/smoke/bin/portregistry ports --protocol tcp
+          /tmp/smoke/bin/portregistry doctor || true   # informational: autostart is not installed in CI
           /tmp/smoke/bin/portregistry daemon stop
+      - name: pipx install smoke test
+        run: |
+          python -m pip install pipx
+          python -m pipx run --spec "$(ls dist/*.whl)" portregistry version
+          python -m pipx install "$(ls dist/*.whl)"
+          portregistry --help > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+
+  binaries:
+    name: Binary bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install -e ".[docker,binary]"
+          # The tray backend needs a desktop on Linux; bundle it where it works headlessly.
+          if [ "$RUNNER_OS" != "Linux" ]; then python -m pip install -e ".[tray]"; fi
+      - name: Build one-folder bundle
+        run: pyinstaller --noconfirm --clean packaging/pyinstaller/portregistry.spec
+      - name: Smoke test the bundle
+        shell: bash
+        env:
+          PORTREGISTRY_HOME: ${{ runner.temp }}/bundle-home
+          PORTREGISTRY_PORT: "18766"
+        run: |
+          BIN=dist/portregistry/portregistry
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=dist/portregistry/portregistry.exe; fi
+          "$BIN" version
+          "$BIN" daemon start --timeout 120
+          "$BIN" status
+          "$BIN" ports --protocol tcp --limit 5
+          curl -fsS http://127.0.0.1:18766/static/portregistry/vendor/htmx.min.js > /dev/null
+          "$BIN" daemon install --dry-run
+          "$BIN" daemon stop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portregistry-${{ runner.os }}
+          path: dist/portregistry/
