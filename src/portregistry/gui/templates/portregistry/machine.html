@@ -1,0 +1,68 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}Machine{% endblock %}
+{% block heading %}Machine &amp; daemon{% endblock %}
+{% block content %}
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Machine identity</h2>
+    <dl class="kv">
+      <dt>Hostname</dt><dd>{{ machine.hostname }}</dd>
+      <dt>Machine UUID</dt><dd class="mono small">{{ machine.uuid }}</dd>
+      <dt>OS</dt><dd>{{ machine.os_name }} {{ machine.os_version }}</dd>
+      <dt>Build</dt><dd class="small">{{ machine.os_detail }}</dd>
+      <dt>Architecture</dt><dd>{{ machine.architecture }}</dd>
+      <dt>Registered</dt><dd>{{ machine.created_at|ago }}</dd>
+    </dl>
+  </section>
+  {% if status %}
+  <section class="card">
+    <h2>Daemon</h2>
+    <dl class="kv">
+      <dt>Version</dt><dd>{{ status.daemon.version }}</dd>
+      <dt>PID</dt><dd class="mono">{{ status.daemon.pid }}</dd>
+      <dt>Listening</dt><dd class="mono">{{ status.daemon.base_url }}</dd>
+      <dt>Uptime</dt><dd>{{ status.daemon.started_at|ago|cut:" ago" }}</dd>
+      <dt>Scheduler</dt><dd>{% if status.scheduler.running %}running{% else %}stopped{% endif %}; native every {{ status.scheduler.native_interval|floatformat:0 }}s{% if status.scheduler.docker_interval %}, Docker every {{ status.scheduler.docker_interval|floatformat:0 }}s{% endif %}</dd>
+      <dt>Live clients</dt><dd>{{ status.daemon.sse_subscribers }}</dd>
+    </dl>
+  </section>
+  {% endif %}
+</div>
+{% if status %}
+<div class="grid grid-2" style="margin-top:14px">
+  <section class="card">
+    <h2>Discovery providers</h2>
+    {% for name, p in status.providers.items %}
+      <p><strong>{{ name }}</strong> <span class="badge {{ p.state|sev_class }}">{{ p.state }}</span> <span class="small muted">{{ p.message }}</span><br>
+      <span class="small muted">last success {{ p.last_success|ago }}</span></p>
+    {% endfor %}
+    <p class="small">Last successful native scan: {{ status.discovery.last_success_at|ago }}{% if status.discovery.stale %} <span class="badge sev-warning">stale</span>{% endif %}</p>
+  </section>
+  <section class="card">
+    <h2>Platform &amp; permissions</h2>
+    <p>Platform: {{ status.platform.platform }} · elevated: {% if status.platform.elevated %}yes{% elif status.platform.elevated is None %}unknown{% else %}no{% endif %}</p>
+    <ul class="small">{% for note in status.platform.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+  </section>
+</div>
+{% endif %}
+<section class="card" style="margin-top:14px">
+  <h2>Recent scans</h2>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>#</th><th>Kind</th><th>Trigger</th><th>Status</th><th>Started</th><th class="right">Duration</th><th class="right">Endpoints</th><th class="right">+ / −</th><th>Message</th></tr></thead>
+    <tbody>{% for s in scans %}
+      <tr><td>{{ s.pk }}</td><td>{{ s.kind }}</td><td>{{ s.trigger }}</td><td><span class="badge {{ s.status|sev_class }}">{{ s.status }}</span></td>
+        <td class="small">{{ s.started_at|ago }}</td><td class="right small">{{ s.duration_ms|default:"—" }} ms</td>
+        <td class="right">{% if s.kind == "docker" %}{{ s.container_count }} ctr{% else %}{{ s.socket_count }}{% endif %}</td>
+        <td class="right small">{{ s.appeared_count }} / {{ s.disappeared_count }}</td><td class="small">{{ s.message|truncatechars:80 }}</td></tr>
+    {% empty %}<tr><td colspan="9" class="empty">No scans yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if config %}
+<section class="card" style="margin-top:14px">
+  <h2>Configuration (read-only)</h2>
+  <p class="small muted">Edit <code>{{ config.paths.config_file }}</code> and run <code>portregistry daemon restart</code>. Secrets are never shown.</p>
+  <pre>{{ config|pretty_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

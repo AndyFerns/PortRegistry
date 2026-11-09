@@ -1,0 +1,43 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}Containers{% endblock %}
+{% block heading %}Docker containers{% endblock %}
+{% block content %}
+{% if pr_docker %}
+  {% if pr_docker.state == "disabled" %}
+    <div class="alert info">Docker discovery is disabled in the configuration.</div>
+  {% elif pr_docker.state != "ok" %}
+    <div class="alert warn">Docker discovery is <strong>{{ pr_docker.state }}</strong>: {{ pr_docker.message|default:"no details" }}
+      Native socket discovery is unaffected.{% if rows %} Containers below are the last known state{% if pr_docker.last_success %} from {{ pr_docker.last_success|ago }}{% endif %} and may be out of date.{% endif %}</div>
+  {% else %}
+    <p class="small muted">Docker {{ pr_docker.details.server_version|default:"" }} · last inventory {{ pr_docker.last_success|ago }}. PortRegistry only reads from Docker; it never starts, stops or executes anything in containers.</p>
+  {% endif %}
+{% endif %}
+<div class="filters">
+  <div class="actions">
+    <a class="btn small {% if not show_removed %}primary{% endif %}" href="?">Present</a>
+    <a class="btn small {% if show_removed %}primary{% endif %}" href="?removed=1">Include removed</a>
+  </div>
+</div>
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Container</th><th>Image</th><th>Status</th><th>Published (host → container)</th><th>Internal only</th><th>Networks</th><th>Started</th></tr></thead>
+  <tbody>
+  {% for c in rows %}
+    <tr class="{% if not c.present %}inactive{% endif %}">
+      <td><strong>{{ c.name }}</strong><br><span class="mono small muted">{{ c.short_id }}</span></td>
+      <td class="small">{{ c.image_ref }}</td>
+      <td><span class="badge {{ c.status|sev_class }}">{% if c.present %}{{ c.status }}{% else %}removed{% endif %}</span></td>
+      <td class="mono small">{% for m in c.port_mappings.all %}{% if m.published and m.active %}{{ m.host_ip|default:"0.0.0.0" }}:{{ m.host_port }} → {{ m.container_port }}/{{ m.protocol }}<br>{% endif %}{% endfor %}</td>
+      <td class="mono small">{% for m in c.port_mappings.all %}{% if not m.published %}{{ m.container_port }}/{{ m.protocol }} {% endif %}{% endfor %}</td>
+      <td class="small">{% for name in c.networks %}{{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td class="small">{{ c.started_at|ago }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="empty">{% if pr_docker.state == "ok" %}No containers.{% else %}No container data (Docker has not been reachable).{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small muted" style="margin-top:10px">Internal container ports, host-published mappings and host-visible sockets are distinct: a published mapping is reported by Docker, while the host socket (on the Ports page) may be owned by a Docker proxy process rather than the container's own process.</p>
+{% endblock %}
