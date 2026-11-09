@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[docker,dev]"
+      - name: Ruff lint
+        run: ruff check src tests
+      - name: Ruff format
+        run: ruff format --check src tests
+      - name: Mypy
+        run: mypy
+      - name: Django checks and migration drift
+        env:
+          PORTREGISTRY_HOME: ${{ runner.temp }}/prhome
+        run: |
+          mkdir -p "$PORTREGISTRY_HOME/data"
+          python -m django check --settings=portregistry.django_app.settings
+          python -m django makemigrations --check --dry-run --settings=portregistry.django_app.settings
+
+  test:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[docker,dev]"
+      - name: Pytest
+        # docker_live tests run where a Docker daemon is reachable (Ubuntu runners)
+        # and skip with a reason elsewhere (GitHub's Windows/macOS runners cannot
+        # run Linux containers); the docker-live job below makes them mandatory.
+        run: python -m pytest -ra
+
+  docker-live:
+    name: Live Docker discovery (required)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[docker,dev]"
+      - name: Docker info
+        run: docker version && docker info --format '{{.ServerVersion}} {{.OperatingSystem}}'
+      - name: Pre-pull test image
+        run: docker pull nginx:alpine
+      - name: Live Docker tests (skips are failures)
+        env:
+          PORTREGISTRY_REQUIRE_DOCKER: "1"
+        run: python -m pytest -m docker_live -ra -v
+
+  build:
+    name: Build & smoke-test package
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install build
+          python -m build
+      - name: Install wheel into a clean virtualenv
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/portregistry --help
+          /tmp/smoke/bin/portregistry version
+          /tmp/smoke/bin/python -c "import portregistry.gui, pathlib; p = pathlib.Path(portregistry.gui.__file__).parent; assert (p / 'templates/portregistry/base.html').exists(); assert (p / 'static/portregistry/vendor/htmx.min.js').exists(); print('package data OK')"
+      - name: Daemon smoke test from the wheel
+        env:
+          PORTREGISTRY_HOME: ${{ runner.temp }}/smoke-home
+          PORTREGISTRY_PORT: "18765"
+        run: |
+          /tmp/smoke/bin/portregistry daemon start --timeout 60
+          curl -fsS http://127.0.0.1:18765/api/v1/health/
+          /tmp/smoke/bin/portregistry status
+          /tmp/smoke/bin/portregistry ports --protocol tcp
+          /tmp/smoke/bin/portregistry daemon stop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

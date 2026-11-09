@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python build/cache artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local PortRegistry state (when PORTREGISTRY_HOME points inside the repo)
+.portregistry/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

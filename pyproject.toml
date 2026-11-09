@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "portregistry"
+dynamic = ["version"]
+description = "Local-first, cross-platform port discovery and service registry"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "PortRegistry contributors" }]
+keywords = ["ports", "sockets", "service-registry", "psutil", "devtools", "homelab"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Framework :: Django :: 5.2",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.15",
+    "uvicorn>=0.30",
+    "psutil>=6.0",
+    "platformdirs>=4.0",
+    "httpx>=0.27",
+    "typer>=0.12",
+    "rich>=13.7",
+    "textual>=1.0",
+]
+
+[project.optional-dependencies]
+docker = ["docker>=7.1"]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "build>=1.2",
+    "pyyaml>=6.0",
+    "types-PyYAML",
+]
+
+[project.scripts]
+portregistry = "portregistry.cli.main:main"
+
+[tool.hatch.version]
+path = "src/portregistry/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/portregistry"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/portregistry", "tests", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "portregistry.django_app.settings"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "docker_live: requires a reachable Docker daemon (skipped otherwise; PORTREGISTRY_REQUIRE_DOCKER=1 turns skips into failures)",
+    "slow: starts real daemon subprocesses",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:docker.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["src/portregistry/django_app/migrations", "src/portregistry/gui/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM"]
+ignore = [
+    "E501",   # line length is enforced by `ruff format`; long user-facing strings are allowed
+    "SIM105", # contextlib.suppress is not always clearer
+    "SIM108", # ternaries are not always clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+"src/portregistry/cli/**" = ["B008"]  # Typer uses function calls in argument defaults
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "src/portregistry/core",
+    "src/portregistry/discovery",
+    "src/portregistry/config.py",
+    "src/portregistry/paths.py",
+    "src/portregistry/client.py",
+    "src/portregistry/services/conflicts.py",
+    "src/portregistry/daemon/lock.py",
+    "src/portregistry/daemon/scheduler.py",
+]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
