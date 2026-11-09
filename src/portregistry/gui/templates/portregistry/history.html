@@ -1,0 +1,24 @@
+{% extends "portregistry/base.html" %}
+{% block title %}History{% endblock %}
+{% block heading %}History{% endblock %}
+{% block content %}
+<form class="filters" hx-get="/history/" hx-target="#history-table" hx-push-url="true" hx-trigger="input delay:300ms, submit">
+  <label>Search <input type="search" name="q" value="{{ q }}" placeholder="summary or type" data-search></label>
+  <label>Type
+    <select name="type">
+      <option value="">all</option>
+      {% for t in type_choices %}<option value="{{ t }}" {% if type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select></label>
+  <label>Severity
+    <select name="severity">
+      <option value="">any</option>
+      <option value="info" {% if severity == "info" %}selected{% endif %}>info</option>
+      <option value="warning" {% if severity == "warning" %}selected{% endif %}>warning</option>
+      <option value="error" {% if severity == "error" %}selected{% endif %}>error</option>
+    </select></label>
+</form>
+<p class="small muted">Only meaningful state changes are recorded; unchanged polling cycles produce no history.</p>
+<div id="history-table" hx-get="/history/" hx-trigger="sse:history" hx-include=".filters" hx-swap="innerHTML">
+  {% include "portregistry/partials/history_table.html" %}
+</div>
+{% endblock %}
