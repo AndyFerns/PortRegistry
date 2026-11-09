@@ -1,0 +1,39 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}Reservations{% endblock %}
+{% block heading %}Reservations{% endblock %}
+{% block content %}
+<div class="alert info small">Reservations are advisory records of intent. They do not bind ports or stop other programs from using them; PortRegistry reports occupancy and overlaps as conflicts.</div>
+<div class="filters">
+  <div class="actions">
+    <a class="btn small {% if status == 'active' %}primary{% endif %}" href="?status=active">Active</a>
+    <a class="btn small {% if status == 'released' %}primary{% endif %}" href="?status=released">Released</a>
+    <a class="btn small {% if status == 'all' %}primary{% endif %}" href="?status=all">All</a>
+  </div>
+  <a class="btn primary" href="/reservations/new/">New reservation</a>
+</div>
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>#</th><th>Endpoint</th><th>Status</th><th>Service</th><th>Conflicts</th><th>Description</th><th>Updated</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    {% with cs=conflict_map|get_item:r.pk %}
+    <tr class="{% if r.status == 'released' %}inactive{% endif %}">
+      <td><a href="/reservations/{{ r.pk }}/">{{ r.pk }}</a></td>
+      <td class="mono">{{ r|endpoint }}</td>
+      <td>{% if r.pk in attention %}<span class="badge sev-warning">attention</span>{% endif %}
+          <span class="badge {{ r.status|sev_class }}">{{ r.status }}</span></td>
+      <td>{% if r.service %}<a href="/services/{{ r.service.pk }}/">{{ r.service.name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="small">{% for c in cs %}<span class="badge {{ c.severity|sev_class }}" title="{{ c.explanation }}">{{ c.type }}</span> {% empty %}<span class="muted">none</span>{% endfor %}</td>
+      <td class="small">{{ r.description|truncatechars:60 }}</td>
+      <td class="small nowrap">{{ r.updated_at|ago }}</td>
+      <td class="nowrap">{% if r.status == "active" %}<form method="post" action="/reservations/{{ r.pk }}/release/" class="inline">{% csrf_token %}<button class="btn small" type="submit">Release</button></form>{% endif %}</td>
+    </tr>
+    {% endwith %}
+  {% empty %}
+    <tr><td colspan="8" class="empty">No {{ status }} reservations. <a href="/reservations/new/">Create one</a>, or use “reserve” on the <a href="/ports/">ports explorer</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

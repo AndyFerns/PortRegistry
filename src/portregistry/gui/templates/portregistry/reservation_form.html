@@ -1,0 +1,43 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}{{ title }}{% endblock %}
+{% block heading %}{{ title }}{% if reservation %} <span class="badge {{ reservation.status|sev_class }}">{{ reservation.status }}</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="grid grid-2">
+  <section class="card">
+    <form method="post" id="reservation-form"
+          hx-post="/reservations/check/" hx-trigger="input delay:400ms, load" hx-target="#availability" hx-swap="innerHTML">
+      {% csrf_token %}
+      {% if reservation %}<input type="hidden" name="exclude_id" value="{{ reservation.pk }}">{% endif %}
+      {% include "portregistry/partials/form_fields.html" %}
+      <div class="actions" style="margin-top:14px">
+        <button class="btn primary" type="submit">Save</button>
+        <a class="btn" href="/reservations/">Back</a>
+      </div>
+    </form>
+    {% if reservation %}
+    <div class="actions" style="margin-top:14px">
+      {% if reservation.status == "active" %}
+      <form method="post" action="/reservations/{{ reservation.pk }}/release/" class="inline">{% csrf_token %}<button class="btn" type="submit">Release</button></form>
+      {% else %}
+      <form method="post" action="/reservations/{{ reservation.pk }}/reactivate/" class="inline">{% csrf_token %}<button class="btn" type="submit">Reactivate</button></form>
+      {% endif %}
+      <a class="btn danger" href="/reservations/{{ reservation.pk }}/delete/">Delete…</a>
+    </div>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>Availability check <span class="spinner htmx-indicator" aria-hidden="true"></span></h2>
+    <p class="small muted">Checked against the latest discovery results and existing reservations. This is advisory: another program may bind the port at any time.</p>
+    <div id="availability"><p class="muted">Enter a port to check.</p></div>
+    {% if reservation %}
+      <h2 style="margin-top:14px">Current conflicts</h2>
+      {% for conflict in conflicts %}
+        {% include "portregistry/partials/conflict_card.html" with conflict=conflict %}
+      {% empty %}<p class="muted">None.</p>{% endfor %}
+      <h2 style="margin-top:14px">History</h2>
+      <ul class="timeline">{% for e in history %}<li><span class="muted small">{{ e.timestamp|ago }}</span><span>{{ e.summary }}</span></li>{% empty %}<li><span></span><span class="muted">No history.</span></li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
