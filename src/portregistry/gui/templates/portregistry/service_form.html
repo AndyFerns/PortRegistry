@@ -1,0 +1,17 @@
+{% extends "portregistry/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+{% block content %}
+<section class="card">
+  <form method="post">
+    {% csrf_token %}
+    {% include "portregistry/partials/form_fields.html" %}
+    <datalist id="categories">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn primary" type="submit">Save</button>
+      <a class="btn" href="{% if service %}/services/{{ service.pk }}/{% else %}/services/{% endif %}">Cancel</a>
+    </div>
+  </form>
+</section>
+<p class="small muted">Expected executable and working directory let PortRegistry verify that the right program owns the service's reserved ports. Use <code>docker:NAME</code> for a containerised service.</p>
+{% endblock %}

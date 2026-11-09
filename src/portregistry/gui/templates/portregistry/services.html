@@ -1,0 +1,26 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Services{% endblock %}
+{% block heading %}Services{% endblock %}
+{% block content %}
+<div class="filters">
+  <form method="get" class="actions">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search services" data-search>
+    <button class="btn small" type="submit">Search</button>
+  </form>
+  <a class="btn primary" href="/services/new/">Register service</a>
+</div>
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Name</th><th>Category</th><th>Expected executable</th><th>Working dir</th><th class="right">Active reservations</th><th>Description</th></tr></thead>
+  <tbody>
+  {% for s in services %}
+    <tr><td><a href="/services/{{ s.pk }}/">{{ s.name }}</a></td><td>{{ s.category|default:"—" }}</td>
+      <td class="mono small">{{ s.expected_executable|default:"—" }}</td><td class="mono small">{{ s.expected_working_directory|default:"—" }}</td>
+      <td class="right">{{ s.reservation_count }}</td><td class="small">{{ s.description|truncatechars:80 }}</td></tr>
+  {% empty %}
+    <tr><td colspan="6" class="empty">{% if q %}No services match “{{ q }}”.{% else %}No services yet. <a href="/services/new/">Register one</a> to document what should run on this machine.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

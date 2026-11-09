@@ -1,0 +1,43 @@
+{% extends "portregistry/base.html" %}
+{% load pr_format %}
+{% block title %}{{ service.name }}{% endblock %}
+{% block heading %}{{ service.name }} {% if service.category %}<span class="badge">{{ service.category }}</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="actions" style="margin-bottom:12px">
+  <a class="btn" href="/services/{{ service.pk }}/edit/">Edit</a>
+  <a class="btn" href="/reservations/new/?service={{ service.pk }}">Reserve a port</a>
+  <a class="btn danger" href="/services/{{ service.pk }}/delete/">Delete…</a>
+</div>
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Definition</h2>
+    <dl class="kv">
+      <dt>Description</dt><dd>{{ service.description|default:"—"|linebreaksbr }}</dd>
+      <dt>Expected executable</dt><dd class="mono small">{{ service.expected_executable|default:"— (ownership cannot be verified)" }}</dd>
+      <dt>Expected working dir</dt><dd class="mono small">{{ service.expected_working_directory|default:"—" }}</dd>
+      <dt>Documentation</dt><dd>{% if service.documentation_url %}<a href="{{ service.documentation_url }}" rel="noopener noreferrer" target="_blank">{{ service.documentation_url }}</a>{% else %}—{% endif %}</dd>
+      <dt>Notes</dt><dd>{{ service.notes|default:"—"|linebreaksbr }}</dd>
+      <dt>Updated</dt><dd>{{ service.updated_at|ago }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Conflicts</h2>
+    {% for conflict in conflicts %}
+      {% include "portregistry/partials/conflict_card.html" with conflict=conflict %}
+    {% empty %}<p class="muted">No conflicts for this service.</p>{% endfor %}
+  </section>
+</div>
+<section class="card" style="margin-top:14px">
+  <h2>Reservations</h2>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>#</th><th>Endpoint</th><th>Status</th><th>Description</th></tr></thead>
+    <tbody>{% for r in reservations %}
+      <tr class="{% if r.status == 'released' %}inactive{% endif %}"><td><a href="/reservations/{{ r.pk }}/">{{ r.pk }}</a></td><td class="mono">{{ r|endpoint }}</td><td><span class="badge {{ r.status|sev_class }}">{{ r.status }}</span></td><td class="small">{{ r.description }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="empty">No reservations. <a href="/reservations/new/">Reserve a port</a> for this service.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+<section class="card" style="margin-top:14px">
+  <h2>History</h2>
+  <ul class="timeline">{% for e in history %}<li><span class="muted small">{{ e.timestamp|ago }}</span><span>{{ e.summary }}</span></li>{% empty %}<li><span></span><span class="muted">No history.</span></li>{% endfor %}</ul>
+</section>
+{% endblock %}
