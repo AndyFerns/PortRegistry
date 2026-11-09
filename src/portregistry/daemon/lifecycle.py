@@ -128,6 +128,7 @@ def _run_locked(config: Config, paths: AppPaths, token: str, lock: DaemonLock) -
     from portregistry.core.application import Application, set_application
     from portregistry.core.identity import load_or_create_machine_id
     from portregistry.core.types import ScanScope
+    from portregistry.daemon.alerts import AlertDispatcher
     from portregistry.daemon.scheduler import Scheduler
     from portregistry.daemon.server import build_server
     from portregistry.discovery.coordinator import DiscoveryCoordinator
@@ -156,6 +157,9 @@ def _run_locked(config: Config, paths: AppPaths, token: str, lock: DaemonLock) -
     if not config.discovery.docker_enabled:
         app.docker_provider.enabled = False
         app.docker_provider.update("disabled", "Docker discovery disabled in configuration")
+    app.alerts = AlertDispatcher(config.alerts.webhooks, str(machine_uuid))
+    app.bus.add_listener(app.alerts.on_bus_event)
+    app.alerts.start()
     set_application(app)
 
     machine = ensure_local_machine(machine_uuid)
@@ -205,7 +209,9 @@ def _run_locked(config: Config, paths: AppPaths, token: str, lock: DaemonLock) -
         native_interval=d.native_interval,
         docker_runner=docker_service.reconcile if docker_service else None,
         docker_interval=d.docker_interval if docker_service else None,
-        maintenance_runner=lambda: cleanup(retention),
+        maintenance_runner=lambda: cleanup(
+            retention, noise_retention_days=config.noise.noise_retention_days
+        ),
     )
     app.scheduler = scheduler
     scheduler.start()
@@ -248,6 +254,8 @@ def _shutdown(
         logger.warning("Scheduler did not stop within 20s; a scan may have been interrupted")
     if docker_service is not None:
         docker_service.stop()
+    if getattr(app, "alerts", None) is not None:
+        app.alerts.stop()
     try:
         set_machine_online(machine, False, reason="daemon shutdown")
     except Exception:

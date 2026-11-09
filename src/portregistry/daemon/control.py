@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -30,6 +31,28 @@ def _url_for(host: str, port: int) -> str:
     if ":" in host:
         host = f"[{host}]"
     return f"http://{host}:{port}"
+
+
+def is_frozen() -> bool:
+    """True when running from a PyInstaller bundle."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def cli_command(*, windowless: bool = False) -> list[str]:
+    """Command prefix that invokes the PortRegistry CLI with this installation.
+
+    * PyInstaller bundle: the bundle executable itself.
+    * Python install: ``python -m portregistry`` (``pythonw`` on Windows when a
+      windowless process is wanted, e.g. for login autostart).
+    """
+    if is_frozen():
+        return [sys.executable]
+    exe = sys.executable
+    if windowless and sys.platform == "win32":
+        candidate = Path(exe).with_name("pythonw.exe")
+        if candidate.exists():
+            exe = str(candidate)
+    return [exe, "-m", "portregistry"]
 
 
 def check_health(base_url: str, timeout: float = 2.0) -> dict[str, Any] | None:
@@ -122,7 +145,7 @@ def start_daemon(
         )
     ensure_dirs(paths)
     env["PYTHONUNBUFFERED"] = "1"
-    cmd = [sys.executable, "-m", "portregistry", "daemon", "run", "--quiet"]
+    cmd = [*cli_command(), "daemon", "run", "--quiet"]
     with open(paths.bootstrap_log_file, "ab") as log_handle:
         log_handle.write(f"\n--- start {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
         log_handle.flush()
