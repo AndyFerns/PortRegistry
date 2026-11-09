@@ -1,0 +1,33 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Ports{% endblock %}
+{% block heading %}Ports explorer{% endblock %}
+{% block content %}
+<form class="filters" hx-get="/ports/" hx-target="#ports-table" hx-push-url="true"
+      hx-trigger="input delay:300ms, submit" hx-indicator="#ports-spin">
+  <label>Search <input type="search" name="q" value="{{ params.q|default:'' }}" placeholder="port, address, process, exe, user, PID" data-search size="32"></label>
+  <label>Port <input type="number" name="port" min="1" max="65535" value="{{ params.port|default:'' }}" style="width:7em"></label>
+  <label>Protocol
+    <select name="protocol">
+      <option value="">any</option>
+      <option value="tcp" {% if params.protocol == "tcp" %}selected{% endif %}>TCP</option>
+      <option value="udp" {% if params.protocol == "udp" %}selected{% endif %}>UDP</option>
+    </select></label>
+  <label>Family
+    <select name="family">
+      <option value="">any</option>
+      <option value="ipv4" {% if params.family == "ipv4" %}selected{% endif %}>IPv4</option>
+      <option value="ipv6" {% if params.family == "ipv6" %}selected{% endif %}>IPv6</option>
+    </select></label>
+  <label>State
+    <select name="active">
+      <option value="true" {% if params.active != "all" and params.active != "false" %}selected{% endif %}>active</option>
+      <option value="false" {% if params.active == "false" %}selected{% endif %}>gone</option>
+      <option value="all" {% if params.active == "all" %}selected{% endif %}>all</option>
+    </select></label>
+  <input type="hidden" name="ordering" value="{{ ordering }}">
+  <span id="ports-spin" class="spinner htmx-indicator" aria-hidden="true"></span>
+</form>
+<div id="ports-table" hx-get="/ports/" hx-trigger="sse:ports, sse:hello" hx-include=".filters" hx-swap="innerHTML">
+  {% include "portregistry/partials/ports_table.html" %}
+</div>
+{% endblock %}

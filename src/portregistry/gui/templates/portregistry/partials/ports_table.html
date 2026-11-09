@@ -1,0 +1,43 @@
+{% load pr_format %}
+{% if error %}<div class="alert error">Invalid filter: {{ error }}</div>{% endif %}
+<p class="small muted">{{ total }} endpoint{{ total|pluralize }}{% if total > rows|length %}, showing {{ offset|add:1 }}–{{ offset|add:rows|length }}{% endif %}. TCP shows listening sockets; UDP shows bound sockets (UDP has no LISTEN state).</p>
+<div class="table-wrap">
+<table class="table">
+  <thead><tr>
+    <th><a class="sort" href="{% query_with ordering='protocol' offset='' %}">Proto</a></th>
+    <th><a class="sort" href="{% query_with ordering='address' offset='' %}">Address</a></th>
+    <th><a class="sort" href="{% query_with ordering='port' offset='' %}">Port ↑</a> <a class="sort" href="{% query_with ordering='-port' offset='' %}">↓</a></th>
+    <th>State</th>
+    <th><a class="sort" href="{% query_with ordering='pid' offset='' %}">PID</a></th>
+    <th><a class="sort" href="{% query_with ordering='process' offset='' %}">Process</a></th>
+    <th>User</th>
+    <th>Docker</th>
+    <th>Registry</th>
+    <th><a class="sort" href="{% query_with ordering='-first_seen' offset='' %}">First seen</a></th>
+  </tr></thead>
+  <tbody>
+  {% for s in rows %}
+    <tr class="{% if not s.active %}inactive{% endif %}">
+      <td>{{ s.protocol|upper }}</td>
+      <td class="mono">{{ s.address }}</td>
+      <td class="mono"><a href="/ports/{{ s.pk }}/">{{ s.port }}</a></td>
+      <td class="small">{{ s.state }}{% if not s.active %} (gone){% endif %}</td>
+      <td class="mono">{{ s.pid|default:"—" }}</td>
+      <td>{% if s.process %}<a href="/processes/{{ s.process.pk }}/">{{ s.process.name|default:"?" }}</a>{% if s.process.metadata_errors %} <span class="badge sev-info" title="Some metadata is restricted by OS permissions">limited</span>{% endif %}{% else %}<span class="muted">unresolved</span>{% endif %}</td>
+      <td class="small">{{ s.process.username|default:"—" }}</td>
+      <td class="small">{% for m in docker|get_item:s.pk %}{{ m.container.name }} → {{ m.container_port }}/{{ m.protocol }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+      <td>{% if not s.active %}<span class="muted">—</span>{% elif s.pk in covered %}<span class="badge st-ok">reserved</span>{% else %}<a class="small" href="/reservations/new/?port={{ s.port }}&protocol={{ s.protocol }}">reserve</a>{% endif %}</td>
+      <td class="small nowrap" title="{{ s.first_seen|date:'c' }}">{{ s.first_seen|ago }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="10" class="empty">No endpoints match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if prev_offset is not None or next_offset %}
+<div class="actions" style="margin-top:8px">
+  {% if prev_offset is not None %}<a class="btn small" href="{% query_with offset=prev_offset %}">← Previous</a>{% endif %}
+  {% if next_offset %}<a class="btn small" href="{% query_with offset=next_offset %}">Next →</a>{% endif %}
+</div>
+{% endif %}

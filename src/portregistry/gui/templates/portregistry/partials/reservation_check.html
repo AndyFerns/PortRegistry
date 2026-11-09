@@ -1,0 +1,12 @@
+{% if error %}
+  <p class="muted">{{ error }}</p>
+{% elif findings %}
+  {% for f in findings %}
+  <div class="finding {{ f.severity }}">
+    <div class="actions"><span class="badge sev-{{ f.severity }}">{{ f.severity }}</span><span class="badge">{{ f.certainty }}</span><span class="title">{{ f.title }}</span></div>
+    <div class="small" style="margin-top:4px">{{ f.explanation }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="alert ok">No current occupant or overlapping reservation found.</div>
+{% endif %}
