@@ -1,6 +1,7 @@
 from django.urls import path, re_path
 
 from portregistry.django_app.api import views
+from portregistry.django_app.api import views_extra as vx
 from portregistry.django_app.api.errors import api_not_found
 from portregistry.django_app.api.sse import event_stream
 
@@ -12,12 +13,17 @@ urlpatterns = [
     path("machines/", views.MachineListView.as_view(), name="api-machines"),
     path("machines/<str:machine_uuid>/", views.MachineDetailView.as_view(), name="api-machine"),
     path("ports/", views.PortListView.as_view(), name="api-ports"),
+    path("ports/free/", vx.FreePortsView.as_view(), name="api-ports-free"),
+    path("ports/timeline/", vx.TimelineView.as_view(), name="api-ports-timeline"),
+    path("ports/<int:pk>/known/", vx.PortKnownView.as_view(), name="api-port-known"),
     path("ports/<int:pk>/", views.PortDetailView.as_view(), name="api-port"),
     path("processes/", views.ProcessListView.as_view(), name="api-processes"),
     path("processes/<int:pk>/", views.ProcessDetailView.as_view(), name="api-process"),
+    path("processes/<int:pk>/known/", vx.ProcessKnownView.as_view(), name="api-process-known"),
     path("containers/", views.ContainerListView.as_view(), name="api-containers"),
     path("containers/<str:ref>/", views.ContainerDetailView.as_view(), name="api-container"),
     path("services/", views.ServiceListView.as_view(), name="api-services"),
+    path("services/adopt/", vx.AdoptView.as_view(), name="api-services-adopt"),
     path("services/<str:ref>/", views.ServiceDetailView.as_view(), name="api-service"),
     path("reservations/", views.ReservationListView.as_view(), name="api-reservations"),
     path("reservations/check/", views.ReservationCheckView.as_view(), name="api-reservation-check"),
@@ -33,6 +39,19 @@ urlpatterns = [
     path("discovery/scans/", views.ScanListView.as_view(), name="api-scans"),
     path("discovery/scans/<int:pk>/", views.ScanDetailView.as_view(), name="api-scan-detail"),
     path("history/", views.HistoryView.as_view(), name="api-history"),
+    path("ignore-rules/", vx.IgnoreRuleListView.as_view(), name="api-ignore-rules"),
+    path("ignore-rules/<int:pk>/", vx.IgnoreRuleDetailView.as_view(), name="api-ignore-rule"),
+    path("diagnostics/", vx.DiagnosticsView.as_view(), name="api-diagnostics"),
+    path("auth/rotate-token/", vx.TokenRotateView.as_view(), name="api-rotate-token"),
+    path("registry/apply/", vx.ManifestApplyView.as_view(), name="api-registry-apply"),
+    path("registry/export/", vx.ManifestExportView.as_view(), name="api-registry-export"),
+    path("alerts/", vx.AlertsView.as_view(), name="api-alerts"),
+    path("alerts/test/", vx.AlertsTestView.as_view(), name="api-alerts-test"),
+    path("filters/", vx.SavedFilterListView.as_view(), name="api-filters"),
+    path("filters/<str:ref>/", vx.SavedFilterDetailView.as_view(), name="api-filter"),
+    path("onboarding/", vx.OnboardingView.as_view(), name="api-onboarding"),
+    path("onboarding/dismiss/", vx.OnboardingDismissView.as_view(), name="api-onboarding-dismiss"),
+    path("autostart/", vx.AutostartStatusView.as_view(), name="api-autostart"),
     path("events/stream/", event_stream, name="api-events"),
     re_path(r"^.*$", api_not_found),
 ]

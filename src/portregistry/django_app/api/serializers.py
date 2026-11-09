@@ -6,15 +6,18 @@ from datetime import datetime
 from typing import Any
 
 from portregistry.core.addresses import format_endpoint
+from portregistry.core.well_known import label_for
 from portregistry.django_app.models import (
     Conflict,
     DiscoveryScan,
     DockerContainer,
     DockerPortMapping,
     Event,
+    IgnoreRule,
     Machine,
     PortReservation,
     ProcessInstance,
+    SavedFilter,
     Service,
     Socket,
 )
@@ -51,6 +54,7 @@ def process_summary(p: ProcessInstance | None) -> dict[str, Any] | None:
         "username": p.username,
         "identity_complete": p.identity_complete,
         "active": p.active,
+        "project": p.project_name or None,
     }
 
 
@@ -65,6 +69,8 @@ def process_dict(p: ProcessInstance, *, sockets: list[Socket] | None = None) -> 
         "username": p.username,
         "ppid": p.ppid,
         "cwd": p.cwd,
+        "project_name": p.project_name or None,
+        "project_root": p.project_root or None,
         "create_time": p.create_time,
         "started_at": iso(p.started_at),
         "identity_key": p.identity_key,
@@ -109,6 +115,7 @@ def socket_dict(
     *,
     include_process: bool = True,
     docker: list[DockerPortMapping] | None = None,
+    ignored: str | None = None,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": s.pk,
@@ -126,6 +133,8 @@ def socket_dict(
         "last_seen": iso(s.last_seen),
         "ended_at": iso(s.ended_at),
         "last_scan_id": s.last_scan_id,
+        "label": label_for(s.port, s.protocol),
+        "ignored": ignored,
     }
     if include_process:
         data["process"] = process_summary(s.process)
@@ -255,8 +264,33 @@ def event_dict(e: Event) -> dict[str, Any]:
         "entity_id": e.entity_id or None,
         "summary": e.summary,
         "details": e.details,
+        "noise": e.noise,
         "machine": str(e.machine.uuid) if e.machine_id and e.machine else None,
     }
+
+
+def ignore_rule_dict(r: IgnoreRule) -> dict[str, Any]:
+    from portregistry.services.ignore_rules import rule_view
+
+    return {
+        "id": r.pk,
+        "name": r.name,
+        "enabled": r.enabled,
+        "process_name": r.process_name or None,
+        "exe": r.exe or None,
+        "protocol": r.protocol or None,
+        "port_min": r.port_min,
+        "port_max": r.port_max,
+        "address": r.address or None,
+        "suppress_conflicts": r.suppress_conflicts,
+        "quiet_history": r.quiet_history,
+        "describe": rule_view(r).describe(),
+        "created_at": iso(r.created_at),
+    }
+
+
+def saved_filter_dict(f: SavedFilter) -> dict[str, Any]:
+    return {"id": f.pk, "name": f.name, "page": f.page, "querystring": f.querystring}
 
 
 def container_dict(c: DockerContainer, *, include_mappings: bool = True) -> dict[str, Any]:

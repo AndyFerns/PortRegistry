@@ -149,11 +149,14 @@ class PortListView(APIView):
     def get(self, request: Request) -> Response:
         qs = queries.ports_queryset(request.query_params)
         index = queries.docker_index()
+        ignored = queries.IgnoreClassifier()
         return paginate(
             self,
             request,
             qs,
-            lambda s: ser.socket_dict(s, docker=queries.docker_matches_for(s, index)),
+            lambda s: ser.socket_dict(
+                s, docker=queries.docker_matches_for(s, index), ignored=ignored.reason(s)
+            ),
         )
 
 
@@ -408,7 +411,7 @@ class ScanTicketView(APIView):
 
 class ScanListView(APIView):
     def get(self, request: Request) -> Response:
-        qs = DiscoveryScan.objects.all().order_by("-started_at")
+        qs = DiscoveryScan.objects.all().order_by("-started_at", "-id")
         if request.query_params.get("kind"):
             qs = qs.filter(kind=request.query_params["kind"])
         if request.query_params.get("status"):
@@ -442,5 +445,18 @@ class HistoryView(APIView):
             severity=params.get("severity") or None,
             since=since,
             search=params.get("q") or None,
+            include_noise=params.get("noise") in ("1", "true", "all"),
         ).select_related("machine")
-        return paginate(self, request, qs, ser.event_dict)
+        response = paginate(self, request, qs, ser.event_dict)
+        if params.get("noise") not in ("1", "true", "all"):
+            response.data["hidden_noise"] = (
+                query_events(
+                    type_prefix=params.get("type") or None,
+                    since=since,
+                    search=params.get("q") or None,
+                    include_noise=True,
+                )
+                .filter(noise=True)
+                .count()
+            )
+        return response

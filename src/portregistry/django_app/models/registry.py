@@ -15,6 +15,8 @@ class Service(models.Model):
     expected_working_directory = models.CharField(max_length=500, blank=True)
     documentation_url = models.URLField(max_length=500, blank=True)
     notes = models.TextField(blank=True)
+    # Set when the service is managed by a declarative manifest (portregistry.toml).
+    managed_source = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,6 +50,7 @@ class PortReservation(models.Model):
     bind_address = models.CharField(max_length=64, default="*")
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="active")
     description = models.TextField(blank=True)
+    managed_source = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     released_at = models.DateTimeField(null=True, blank=True)

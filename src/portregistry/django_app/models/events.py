@@ -20,6 +20,8 @@ class Event(models.Model):
     entity_id = models.CharField(max_length=64, blank=True)
     summary = models.CharField(max_length=300)
     details = models.JSONField(default=dict, blank=True)
+    # Short-lived/ephemeral or user-ignored churn: hidden by default, purged sooner.
+    noise = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         app_label = "portregistry"

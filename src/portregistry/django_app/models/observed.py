@@ -63,6 +63,8 @@ class ProcessInstance(models.Model):
     username = models.CharField(max_length=255, blank=True)
     ppid = models.PositiveIntegerField(null=True, blank=True)
     cwd = models.TextField(blank=True)
+    project_name = models.CharField(max_length=255, blank=True)
+    project_root = models.TextField(blank=True)
     metadata_errors = models.JSONField(default=dict, blank=True)
     first_seen = models.DateTimeField()
     last_seen = models.DateTimeField()

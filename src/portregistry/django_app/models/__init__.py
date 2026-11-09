@@ -10,6 +10,7 @@ from portregistry.django_app.models.docker import DockerContainer, DockerImage, 
 from portregistry.django_app.models.events import Event
 from portregistry.django_app.models.machine import Machine
 from portregistry.django_app.models.observed import DiscoveryScan, ProcessInstance, Socket
+from portregistry.django_app.models.preferences import IgnoreRule, SavedFilter, Setting
 from portregistry.django_app.models.registry import PortReservation, Service
 
 __all__ = [
@@ -19,9 +20,12 @@ __all__ = [
     "DockerImage",
     "DockerPortMapping",
     "Event",
+    "IgnoreRule",
     "Machine",
     "PortReservation",
     "ProcessInstance",
+    "SavedFilter",
     "Service",
+    "Setting",
     "Socket",
 ]
