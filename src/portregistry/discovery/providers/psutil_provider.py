@@ -30,6 +30,7 @@ from portregistry.core.types import (
 )
 from portregistry.discovery.normalizer import normalize_connections
 from portregistry.discovery.process_resolver import ProcessResolver
+from portregistry.discovery.project import ProjectDetector
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,12 @@ class PsutilProvider:
             )
 
         processes: dict[int, ProcessInfo] = {}
+        projects = ProjectDetector()  # per-scan cache of cwd -> project
         for pid in sorted({s.pid for s in sockets if s.pid is not None}):
             info = self._resolver.resolve(pid)
+            project = projects.detect(info.cwd)
+            if project is not None:
+                info.project_name, info.project_root = project.name, project.root
             processes[pid] = info
             if info.exited:
                 issues.append(
