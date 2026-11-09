@@ -40,12 +40,17 @@ def start(
 def run(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Log to the log file only."),
     port: int | None = typer.Option(None, "--port", help="Override the configured API port."),
+    home: str | None = typer.Option(
+        None, "--home", help="Use this directory for config/data/logs (sets PORTREGISTRY_HOME)."
+    ),
 ) -> None:
     """Run the daemon in the foreground (Ctrl+C to stop)."""
     import os
 
     from portregistry.daemon.lifecycle import run_daemon
 
+    if home:
+        os.environ["PORTREGISTRY_HOME"] = home
     if port is not None:
         os.environ["PORTREGISTRY_PORT"] = str(port)
     code = run_daemon(console=not quiet)
@@ -132,3 +137,66 @@ def logs(
                     time.sleep(0.5)
         except KeyboardInterrupt:
             pass
+
+
+# ------------------------------------------------------------------- autostart
+
+
+def _print_actions(actions: list, dry_run: bool) -> None:
+    prefix = "Would" if dry_run else "Did"
+    for action in actions:
+        console.print(f"[dim]{prefix}:[/] {esc(action.describe())}")
+
+
+@daemon_app.command("install")
+def install(
+    tray: bool = typer.Option(False, "--tray", help="Also start the tray icon at login."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show exactly what would be written/run."
+    ),
+) -> None:
+    """Start the daemon automatically at login (per-user; no admin rights needed)."""
+    import os
+
+    from portregistry.daemon import autostart
+
+    home = os.environ.get("PORTREGISTRY_HOME")
+    backend = autostart.default_backend()
+    actions = autostart.install(home, tray=tray, dry_run=dry_run, backend=backend)
+    console.print(f"Mechanism: {backend.mechanism}")
+    _print_actions(actions, dry_run)
+    if not dry_run:
+        console.print("[green]Autostart installed.[/] Remove with `portregistry daemon uninstall`.")
+
+
+@daemon_app.command("uninstall")
+def uninstall(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed."),
+) -> None:
+    """Stop starting the daemon (and tray) at login. Does not stop a running daemon."""
+    from portregistry.daemon import autostart
+
+    backend = autostart.default_backend()
+    actions = autostart.uninstall(dry_run=dry_run, backend=backend)
+    _print_actions(actions, dry_run)
+    if not dry_run:
+        console.print("[green]Autostart removed.[/]")
+
+
+@daemon_app.command("autostart")
+def autostart_status(output: OutputFormat = output_option()) -> None:
+    """Show whether the daemon (and tray) start at login."""
+    from portregistry.daemon import autostart
+
+    status_info = autostart.status()
+    data = status_info.as_dict()
+
+    def table() -> None:
+        state = "[green]installed[/]" if status_info.installed else "not installed"
+        console.print(f"Autostart: {state} ({status_info.mechanism})")
+        console.print(f"Tray at login: {'yes' if status_info.tray_installed else 'no'}")
+        for key, value in status_info.details.items():
+            if value:
+                console.print(f"  {key}: {esc(value)}")
+
+    emit(data, output, table=table)

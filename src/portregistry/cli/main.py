@@ -8,7 +8,7 @@ import webbrowser
 import typer
 
 from portregistry import __version__
-from portregistry.cli import inspect_cmds, registry_cmds
+from portregistry.cli import admin_cmds, inspect_cmds, manifest_cmds, registry_cmds, tools_cmds
 from portregistry.cli.common import get_client, output_option
 from portregistry.cli.daemon_cmds import daemon_app
 from portregistry.cli.output import OutputFormat, console, emit, err_console, esc
@@ -45,6 +45,19 @@ app.add_typer(registry_cmds.service_app, name="service")
 app.command("reserve")(registry_cmds.reserve)
 app.add_typer(registry_cmds.reservations_app, name="reservations")
 app.command("release")(registry_cmds.release)
+app.command("who")(tools_cmds.who)
+app.command("free")(tools_cmds.free)
+app.command("adopt")(tools_cmds.adopt)
+app.command("timeline")(tools_cmds.timeline)
+app.command("doctor")(admin_cmds.doctor)
+app.command("apply")(manifest_cmds.apply)
+app.command("export")(manifest_cmds.export)
+app.command("init")(manifest_cmds.init)
+app.command("tray")(admin_cmds.tray)
+app.add_typer(admin_cmds.token_app, name="token")
+app.add_typer(admin_cmds.alerts_app, name="alerts")
+app.add_typer(admin_cmds.ignore_app, name="ignore")
+app.add_typer(admin_cmds.filters_app, name="filters")
 
 
 def _ensure_daemon(no_start: bool) -> None:

@@ -42,6 +42,16 @@ STATUS_STYLE = {
 }
 
 
+def glyph(unicode_char: str, ascii_fallback: str) -> str:
+    """A symbol the current console can encode (legacy Windows consoles use cp1252)."""
+    encoding = console.encoding or "utf-8"
+    try:
+        unicode_char.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return ascii_fallback
+    return unicode_char
+
+
 def styled(value: str | None, styles: dict[str, str]) -> str:
     text = escape(str(value or "-"))
     style = styles.get(str(value or ""))

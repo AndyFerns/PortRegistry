@@ -168,6 +168,9 @@ PORT_CSV = [
     "active",
     "first_seen",
     "last_seen",
+    "label",
+    "project",
+    "ignored",
 ]
 
 
@@ -181,6 +184,7 @@ def _port_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "process_name": p.get("name"),
                 "exe": p.get("exe"),
                 "username": p.get("username"),
+                "project": p.get("project"),
                 "docker": _docker_cell(item) if item.get("docker") else "",
             }
         )
@@ -195,7 +199,7 @@ def ports(
     machine: str | None = typer.Option(None, "--machine", help="Machine hostname or UUID."),
     family: str | None = typer.Option(None, "--family", help="ipv4 or ipv6."),
     search: str | None = typer.Option(
-        None, "--search", "-s", help="Search address/process/exe/user."
+        None, "--search", "-s", help="Search address/process/exe/user, or a port prefix."
     ),
     include_inactive: bool = typer.Option(
         False, "--all", help="Include endpoints no longer observed."
@@ -203,25 +207,55 @@ def ports(
     ordering: str = typer.Option(
         "port", help="port, -port, protocol, address, process, pid, first_seen, last_seen."
     ),
+    group: str | None = typer.Option(
+        None, "--group", "-g", help="Group rows by 'process' or 'project'."
+    ),
+    saved: str | None = typer.Option(
+        None, "--filter", help="Apply a saved filter (see `portregistry filters list`)."
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", "-w", help="Live view: update as endpoints open/close (Ctrl+C to stop)."
+    ),
     limit: int = typer.Option(1000, help="Maximum rows."),
     output: OutputFormat = output_option(),
 ) -> None:
     """List endpoints and the processes that own them."""
     if ctx.invoked_subcommand is not None:
         return
+    if group not in (None, "process", "project"):
+        raise typer.BadParameter("--group must be 'process' or 'project'.")
+    params: dict[str, Any] = {
+        "port": port,
+        "protocol": protocol,
+        "machine": machine,
+        "family": family,
+        "q": search,
+        "active": "all" if include_inactive else None,
+        "ordering": ordering,
+    }
     with get_client() as client:
-        items = client.list_all(
-            "ports/",
-            max_items=limit,
-            port=port,
-            protocol=protocol,
-            machine=machine,
-            family=family,
-            q=search,
-            active="all" if include_inactive else None,
-            ordering=ordering,
-        )
+        if saved:
+            from urllib.parse import parse_qsl
+
+            stored = client.get(f"filters/{saved}/", page="ports")
+            for key, value in parse_qsl(stored["querystring"]):
+                if key == "group" and group is None:
+                    group = value
+                elif params.get(key) in (None, "port"):
+                    params[key] = value
+        if watch:
+            from portregistry.cli.tools_cmds import watch_ports
+
+            watch_ports(params, limit)
+            return
+        items = client.list_all("ports/", max_items=limit, **params)
         freshness = client.get("status/")["discovery"]
+
+    def group_key(item: dict[str, Any]) -> str:
+        p = item.get("process") or {}
+        if group == "process":
+            return f"{p.get('name') or '?'} (pid {p.get('pid')})" if p else "Unresolved owner"
+        return p.get("project") or "No project detected"
 
     def table() -> Table:
         caption = f"{len(items)} endpoints; last complete scan {ago(freshness['last_success_at'])}"
@@ -233,29 +267,40 @@ def ports(
             "Proto",
             "Address",
             "Port",
-            "State",
+            "Label",
             "PID",
             "Process",
+            "Project",
             "User",
             "Docker",
+            "Note",
             "Since",
         )
         tbl.caption = caption
-        for item in items:
+        ordered = sorted(items, key=lambda i: (group_key(i).lower(), i["port"])) if group else items
+        current = None
+        for item in ordered:
+            if group and group_key(item) != current:
+                current = group_key(item)
+                tbl.add_section()
+                tbl.add_row("", "", "", "", "", "", f"[bold]{esc(current)}[/]")
             p = item.get("process")
             name = esc(proc_label(p, item.get("pid")))
             if not item["active"]:
                 name = f"[dim]{name} (gone)[/]"
+            note = item.get("ignored") or ""
             tbl.add_row(
                 str(item["id"]),
                 item["protocol"].upper(),
                 esc(item["address"]),
                 str(item["port"]),
-                item["state"],
+                esc(item.get("label") or ""),
                 str(item["pid"] or "-"),
                 name,
+                esc((p or {}).get("project")),
                 esc((p or {}).get("username")),
                 esc(_docker_cell(item)),
+                f"[dim]{esc(note)}[/]" if note else "",
                 ago(item["first_seen"]),
             )
         return tbl
@@ -468,6 +513,11 @@ def conflicts(
     severity: str | None = typer.Option(None, "--severity", help="error, warning or info."),
     certainty: str | None = typer.Option(None, "--certainty", help="definite or potential."),
     brief: bool = typer.Option(False, "--brief", help="Hide explanations."),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="Exit with code 5 if any conflict is at least this severe (warning|error).",
+    ),
     output: OutputFormat = output_option(),
 ) -> None:
     """Show current conflicts with explanations."""
@@ -519,6 +569,14 @@ def conflicts(
         "first_seen",
     ]
     emit(items, output, table=table, csv_rows=lambda: (items, columns))
+    if fail_on:
+        if fail_on not in ("warning", "error"):
+            raise typer.BadParameter("--fail-on must be 'warning' or 'error'.")
+        threshold = {"warning": ("warning", "error"), "error": ("error",)}[fail_on]
+        with get_client() as client:
+            worst = client.list_all("conflicts/", min_severity=fail_on)
+        if any(c["severity"] in threshold for c in worst):
+            raise typer.Exit(5)
 
 
 # ---------------------------------------------------------------------- history
@@ -532,12 +590,21 @@ def history(
     entity_type: str | None = typer.Option(None, "--entity-type"),
     search: str | None = typer.Option(None, "--search", "-s"),
     limit: int = typer.Option(50, "--limit", "-n"),
+    noise: bool = typer.Option(
+        False, "--noise", help="Include short-lived/ephemeral/ignored churn."
+    ),
     output: OutputFormat = output_option(),
 ) -> None:
     """Show meaningful state changes (not every poll)."""
     with get_client() as client:
         page = client.get(
-            "history/", type=type_, since=since, entity_type=entity_type, q=search, limit=limit
+            "history/",
+            type=type_,
+            since=since,
+            entity_type=entity_type,
+            q=search,
+            limit=limit,
+            noise="1" if noise else None,
         )
     items = page.get("results", [])
 
@@ -551,6 +618,8 @@ def history(
                 esc(e["summary"]),
             )
         tbl.caption = f"{len(items)} of {page.get('count', len(items))} events"
+        if page.get("hidden_noise"):
+            tbl.caption += f"; {page['hidden_noise']} short-lived/ignored hidden (--noise to show)"
         return tbl
 
     columns = ["id", "timestamp", "type", "severity", "entity_type", "entity_id", "summary"]
