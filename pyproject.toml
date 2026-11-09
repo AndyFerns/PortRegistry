@@ -39,6 +39,8 @@ dependencies = [
 
 [project.optional-dependencies]
 docker = ["docker>=7.1"]
+tray = ["pystray>=0.19", "Pillow>=10.0"]
+binary = ["pyinstaller>=6.10"]
 dev = [
     "pytest>=8.0",
     "pytest-django>=4.8",
@@ -102,6 +104,9 @@ files = [
     "src/portregistry/services/conflicts.py",
     "src/portregistry/daemon/lock.py",
     "src/portregistry/daemon/scheduler.py",
+    "src/portregistry/daemon/alerts.py",
+    "src/portregistry/daemon/autostart.py",
+    "src/portregistry/tray/app.py",
 ]
 ignore_missing_imports = true
 check_untyped_defs = true
