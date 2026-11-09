@@ -111,6 +111,8 @@ class Application:
     #: False during daemon startup until both initial native and Docker discovery
     #: have run, so conflicts are not computed from a half-initialised state.
     conflicts_ready: bool = True
+    #: Alert webhook dispatcher (daemon.alerts.AlertDispatcher) when configured.
+    alerts: Any = None
     _shutdown_callback: Callable[[], None] | None = None
 
     def set_shutdown_callback(self, callback: Callable[[], None]) -> None:

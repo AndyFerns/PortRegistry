@@ -105,6 +105,8 @@ class ProcessInfo:
     create_time: float | None = None
     exited: bool = False
     errors: dict[str, str] = field(default_factory=dict)
+    project_name: str | None = None
+    project_root: str | None = None
 
     @property
     def identity_complete(self) -> bool:

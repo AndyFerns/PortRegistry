@@ -21,7 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 #: Topics map to UI areas; clients refresh the matching views.
-TOPICS = ("scan", "ports", "registry", "conflicts", "docker", "history", "daemon")
+TOPICS = ("scan", "ports", "registry", "conflicts", "docker", "history", "daemon", "alerts")
 
 
 @dataclass(frozen=True)
