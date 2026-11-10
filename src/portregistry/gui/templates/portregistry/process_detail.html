@@ -5,6 +5,7 @@
 {% block content %}
 <div class="actions" style="margin-bottom:12px">
   {% if proc.active %}<a class="btn primary" href="/adopt/?process={{ proc.pk }}">Register as service</a>{% endif %}
+  {% if proc.identity_complete %}<a class="btn{% if control.enabled %} danger{% endif %}" href="/processes/{{ proc.pk }}/stop/" title="{% if control.enabled %}Review, then confirm by typing the PID{% else %}Process control is off; shows the commands to do it yourself{% endif %}">{% if control.enabled %}Stop…{% else %}How to stop this{% endif %}</a>{% endif %}
   {% if proc.name %}<form method="post" action="/processes/{{ proc.pk }}/known/" class="inline">{% csrf_token %}<button class="btn" type="submit" title="Treat every endpoint of this program as known">Mark program as known</button></form>{% endif %}
 </div>
 <div class="grid grid-2">

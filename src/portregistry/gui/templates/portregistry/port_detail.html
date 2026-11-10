@@ -11,6 +11,7 @@
     {% if not ignored %}<form method="post" action="/ports/{{ sock.pk }}/known/" class="inline">{% csrf_token %}<button class="btn" type="submit" title="Stop reporting this endpoint as unregistered">Mark as known</button></form>{% endif %}
   {% endif %}
   <a class="btn" href="/ports/timeline/?port={{ sock.port }}&protocol={{ sock.protocol }}">Timeline</a>
+  {% if sock.active and sock.process and sock.process.identity_complete %}<a class="btn{% if control.enabled %} danger{% endif %}" href="/processes/{{ sock.process.pk }}/stop/" title="Stops the owning process ({{ sock.process.name|default:'?' }}, PID {{ sock.process.pid }})">{% if control.enabled %}Stop owning process…{% else %}How to stop this{% endif %}</a>{% endif %}
 </div>
 <div class="grid grid-2">
   <section class="card">

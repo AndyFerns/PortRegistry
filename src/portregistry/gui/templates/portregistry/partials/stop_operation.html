@@ -1,0 +1,19 @@
+<div id="stop-op"{% if op.state == "running" %} hx-get="/processes/stop/{{ op.id }}/" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {% if op.state == "running" %}
+    <div class="alert info">Waiting for the process to exit (up to {{ op.grace_seconds|floatformat:0 }} seconds for a graceful stop)…</div>
+  {% elif op.outcome == "stopped" %}
+    <div class="alert ok">{{ op.message }}</div>
+  {% elif op.outcome == "timeout" %}
+    <div class="alert warn">{{ op.message }} <a href="/processes/{{ op.process_id }}/stop/?mode={{ op.mode }}&amp;force=1">Review a forced stop</a></div>
+  {% else %}
+    <div class="alert error">{{ op.message }}</div>
+  {% endif %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Process</th><th>PID</th><th>How</th><th>Result</th><th>Detail</th></tr></thead>
+    <tbody>{% for m in op.members %}
+      <tr><td>{{ m.name|default:"?" }}</td><td class="mono">{{ m.pid }}</td><td>{{ m.method }}</td>
+        <td><span class="badge {% if m.result == 'stopped' or m.result == 'already_exited' %}st-ok{% elif m.result == 'still_running' or m.result == 'pending' %}sev-warning{% else %}sev-error{% endif %}">{{ m.result }}</span></td>
+        <td class="small">{{ m.detail }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>

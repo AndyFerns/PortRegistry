@@ -1,0 +1,11 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Stop result{% endblock %}
+{% block heading %}Stop {{ op.identity.name|default:"?" }} <span class="muted small">PID {{ op.identity.pid }}</span>{% endblock %}
+{% block content %}
+<p class="small muted">Requested from the {{ op.actor|upper }} · {{ op.method_label }}</p>
+{% include "portregistry/partials/stop_operation.html" %}
+<div class="actions" style="margin-top:14px">
+  <a class="btn" href="/history/?type=process.stop">History</a>
+  <a class="btn" href="/ports/">Ports</a>
+</div>
+{% endblock %}
