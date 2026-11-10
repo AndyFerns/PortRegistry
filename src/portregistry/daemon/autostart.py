@@ -116,6 +116,8 @@ class WinRegRun:
     """Real HKCU Run key access (Windows only)."""
 
     def get(self, name: str) -> str | None:
+        if sys.platform != "win32":  # narrows the type for mypy on other platforms
+            raise OSError("the Windows registry is only available on Windows")
         import winreg
 
         try:
@@ -126,12 +128,16 @@ class WinRegRun:
             return None
 
     def set(self, name: str, value: str) -> None:
+        if sys.platform != "win32":  # narrows the type for mypy on other platforms
+            raise OSError("the Windows registry is only available on Windows")
         import winreg
 
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
 
     def delete(self, name: str) -> None:
+        if sys.platform != "win32":  # narrows the type for mypy on other platforms
+            raise OSError("the Windows registry is only available on Windows")
         import winreg
 
         try:

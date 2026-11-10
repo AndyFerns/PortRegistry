@@ -94,6 +94,55 @@ class OneTimeLinks:
         return self._ttl
 
 
+class ActionNonces:
+    """Single-use, short-lived confirmation codes bound to a payload (daemon memory only).
+
+    Used by process control: the first request returns a code bound to one exact
+    process (and stop mode); the second request must present it within ``ttl``
+    seconds. Codes are consumed on first use, whether or not the action proceeds.
+    """
+
+    def __init__(self, ttl_seconds: float = 30.0, max_pending: int = 20) -> None:
+        self._ttl = ttl_seconds
+        self._max = max_pending
+        self._lock = threading.Lock()
+        self._codes: dict[str, tuple[float, Any]] = {}
+
+    def _prune(self, now: float) -> None:
+        self._codes = {k: v for k, v in self._codes.items() if v[0] > now}
+
+    def issue(self, payload: Any) -> str | None:
+        """Return a new code, or None when too many codes are pending."""
+        with self._lock:
+            now = time.monotonic()
+            self._prune(now)
+            if len(self._codes) >= self._max:
+                return None
+            code = secrets.token_urlsafe(24)
+            self._codes[code] = (now + self._ttl, payload)
+        return code
+
+    def consume(self, code: str) -> tuple[str, Any]:
+        """Pop a code. Returns (status, payload); status is ok, expired or unknown."""
+        with self._lock:
+            entry = self._codes.pop(code, None) if code else None
+        if entry is None:
+            return "unknown", None
+        expiry, payload = entry
+        if expiry <= time.monotonic():
+            return "expired", payload
+        return "ok", payload
+
+    def pending(self) -> int:
+        with self._lock:
+            self._prune(time.monotonic())
+            return len(self._codes)
+
+    @property
+    def ttl(self) -> float:
+        return self._ttl
+
+
 @dataclass
 class Application:
     config: Config
@@ -113,6 +162,10 @@ class Application:
     conflicts_ready: bool = True
     #: Alert webhook dispatcher (daemon.alerts.AlertDispatcher) when configured.
     alerts: Any = None
+    #: Process-control confirmation codes (30 s, single use).
+    control_codes: ActionNonces = field(default_factory=ActionNonces)
+    #: Recent process-stop operations (services.process_control.OperationLog).
+    stop_operations: Any = None
     _shutdown_callback: Callable[[], None] | None = None
 
     def set_shutdown_callback(self, callback: Callable[[], None]) -> None:

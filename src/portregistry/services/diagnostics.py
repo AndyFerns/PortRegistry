@@ -181,6 +181,7 @@ def run_diagnostics(machine: Machine) -> dict[str, Any]:
         )
         hooks = app.config.alerts.webhooks
         checks.append(check("alerts.webhooks", "ok", f"{len(hooks)} webhook(s) configured."))
+        checks.append(_control_check(app.config, elevated))
 
     return {
         "platform": platform,
@@ -188,3 +189,27 @@ def run_diagnostics(machine: Machine) -> dict[str, Any]:
         "elevation_hint": elevation_hint(platform),
         "checks": checks,
     }
+
+
+def _control_check(config: Any, elevated: bool | None) -> dict[str, Any]:
+    from portregistry.services.process_control import control_state
+
+    state = control_state(config, elevated=elevated)
+    if state["allow_other_users"]:
+        return check(
+            "control",
+            "warn",
+            "Process control is ON and can stop OTHER USERS' processes "
+            "(elevated daemon + allow_other_users).",
+            "Set allow_other_users = false in [control] unless you need it.",
+        )
+    if state["enabled"]:
+        return check(
+            "control",
+            "ok",
+            "Process control is on: your own processes can be stopped after a two-step "
+            "confirmation; every attempt is recorded in history.",
+        )
+    if state["configured"]:
+        return check("control", "warn", state["reason"], "Bind the daemon to a loopback address.")
+    return check("control", "ok", "Process control (Stop process) is off.")
