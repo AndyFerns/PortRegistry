@@ -100,3 +100,15 @@ def scan_result(
         enumerated_pids=enumerated_pids,
         error=error,
     )
+
+
+@pytest.fixture
+def fake_os(monkeypatch):
+    """A fake OS for process control; stops run inline (no worker thread)."""
+    from portregistry.services import process_control
+    from tests.control_fakes import FakeOs
+
+    os_ = FakeOs()
+    monkeypatch.setattr(process_control, "default_os", lambda: os_)
+    monkeypatch.setattr(process_control, "RUN_IN_BACKGROUND", False)
+    return os_
