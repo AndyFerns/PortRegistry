@@ -67,6 +67,34 @@ def _api_error(response: httpx.Response) -> ApiError:
     return ApiError(response.status_code, code, message, details)
 
 
+def _timeout(timeout: float | None) -> dict[str, Any]:
+    return {} if timeout is None else {"timeout": timeout}
+
+
+def client_ancestor_header(limit: int = 64) -> str:
+    """This process and its parents (comma-separated PIDs)."""
+    import os
+
+    import psutil
+
+    pids = [os.getpid()]
+    try:
+        pids.extend(p.pid for p in psutil.Process().parents())
+    except psutil.Error:
+        pass
+    return ",".join(str(p) for p in pids[:limit])
+
+
+def control_headers(client_name: str) -> dict[str, str]:
+    """Headers for process-control requests: who is asking, and this process's own
+    parent chain. The daemon only ever uses the chain to *refuse* stopping those
+    processes, so the program making the request can never stop itself or its shell."""
+    return {
+        "X-PortRegistry-Client": client_name,
+        "X-PortRegistry-Client-Ancestors": client_ancestor_header(),
+    }
+
+
 def _headers(token: str | None) -> dict[str, str]:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     if token:
@@ -103,12 +131,26 @@ class ApiClient:
         self.close()
 
     def request(
-        self, method: str, path: str, *, params: dict[str, Any] | None = None, json_body: Any = None
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: Any = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> Any:
         url = path if path.startswith("/") else f"{API_PREFIX}/{path}"
         clean_params = {k: v for k, v in (params or {}).items() if v is not None and v != ""}
         try:
-            response = self._client.request(method, url, params=clean_params, json=json_body)
+            response = self._client.request(
+                method,
+                url,
+                params=clean_params,
+                json=json_body,
+                headers=headers,
+                **_timeout(timeout),
+            )
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError) as exc:
             raise _not_running(self.base_url) from exc
         except httpx.TimeoutException as exc:
@@ -122,8 +164,21 @@ class ApiClient:
     def get(self, path: str, **params: Any) -> Any:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, body: Any = None) -> Any:
-        return self.request("POST", path, json_body=body if body is not None else {})
+    def post(
+        self,
+        path: str,
+        body: Any = None,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        return self.request(
+            "POST",
+            path,
+            json_body=body if body is not None else {},
+            headers=headers,
+            timeout=timeout,
+        )
 
     def patch(self, path: str, body: Any) -> Any:
         return self.request("PATCH", path, json_body=body)
@@ -212,12 +267,26 @@ class AsyncApiClient:
         await self._client.aclose()
 
     async def request(
-        self, method: str, path: str, *, params: dict[str, Any] | None = None, json_body: Any = None
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: Any = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> Any:
         url = path if path.startswith("/") else f"{API_PREFIX}/{path}"
         clean_params = {k: v for k, v in (params or {}).items() if v is not None and v != ""}
         try:
-            response = await self._client.request(method, url, params=clean_params, json=json_body)
+            response = await self._client.request(
+                method,
+                url,
+                params=clean_params,
+                json=json_body,
+                headers=headers,
+                **_timeout(timeout),
+            )
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError) as exc:
             raise _not_running(self.base_url) from exc
         except httpx.TimeoutException as exc:
@@ -231,8 +300,21 @@ class AsyncApiClient:
     async def get(self, path: str, **params: Any) -> Any:
         return await self.request("GET", path, params=params)
 
-    async def post(self, path: str, body: Any = None) -> Any:
-        return await self.request("POST", path, json_body=body if body is not None else {})
+    async def post(
+        self,
+        path: str,
+        body: Any = None,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        return await self.request(
+            "POST",
+            path,
+            json_body=body if body is not None else {},
+            headers=headers,
+            timeout=timeout,
+        )
 
     async def patch(self, path: str, body: Any) -> Any:
         return await self.request("PATCH", path, json_body=body)

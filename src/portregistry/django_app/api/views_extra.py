@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib.sessions.models import Session
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,6 +25,7 @@ from portregistry.services import (
     ignore_rules,
     manifest,
     preferences,
+    process_control,
     timeline,
 )
 from portregistry.services.db import write_transaction
@@ -294,3 +296,80 @@ class AutostartStatusView(APIView):
         from portregistry.daemon import autostart
 
         return Response(autostart.status().as_dict())
+
+
+# ------------------------------------------------------------- process control
+
+
+def _flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _actor(request: Request) -> str:
+    """Who asked: browser sessions are always "gui"; token clients name themselves."""
+    if isinstance(getattr(request, "successful_authenticator", None), SessionAuthentication):
+        return "gui"
+    value = request.headers.get("X-PortRegistry-Client", "").strip().lower()
+    return value if value in ("cli", "tui") else "api"
+
+
+def _ancestors(request: Request) -> tuple[int, ...]:
+    return process_control.parse_ancestors(request.headers.get("X-PortRegistry-Client-Ancestors"))
+
+
+class ControlStatusView(APIView):
+    def get(self, request: Request) -> Response:
+        return Response(process_control.control_state())
+
+
+class ProcessStopPreviewView(APIView):
+    """Assessment + copy-and-run commands. Never issues a code; works when control is off."""
+
+    def get(self, request: Request, pk: int) -> Response:
+        params = request.query_params
+        return Response(
+            process_control.preview(
+                pk,
+                mode=params.get("mode") or "process",
+                force=_flag(params.get("force")),
+                client_ancestors=_ancestors(request),
+            )
+        )
+
+
+class ProcessStopRequestView(APIView):
+    """Step 1 of 2: returns a single-use code valid for 30 seconds."""
+
+    def post(self, request: Request, pk: int) -> Response:
+        data = body(request)
+        return Response(
+            process_control.request_stop(
+                pk,
+                mode=str(data.get("mode") or "process"),
+                force=_flag(data.get("force")),
+                actor=_actor(request),
+                client_ancestors=_ancestors(request),
+            ),
+            status=201,
+        )
+
+
+class ProcessStopConfirmView(APIView):
+    """Step 2 of 2: ``{"code": ..., "pid": <typed PID>}``."""
+
+    def post(self, request: Request) -> Response:
+        data = body(request)
+        operation = process_control.confirm_stop(
+            str(data.get("code") or ""),
+            pid=data.get("pid"),
+            actor=_actor(request),
+            client_ancestors=_ancestors(request),
+        )
+        return Response(operation, status=200 if operation["state"] == "done" else 202)
+
+
+class ProcessStopOperationView(APIView):
+    def get(self, request: Request, op_id: str) -> Response:
+        return Response(process_control.get_operation(op_id))

@@ -20,6 +20,23 @@ urlpatterns = [
     path("processes/", views.ProcessListView.as_view(), name="api-processes"),
     path("processes/<int:pk>/", views.ProcessDetailView.as_view(), name="api-process"),
     path("processes/<int:pk>/known/", vx.ProcessKnownView.as_view(), name="api-process-known"),
+    path(
+        "processes/<int:pk>/stop/preview/",
+        vx.ProcessStopPreviewView.as_view(),
+        name="api-process-stop-preview",
+    ),
+    path(
+        "processes/<int:pk>/stop/request/",
+        vx.ProcessStopRequestView.as_view(),
+        name="api-process-stop-request",
+    ),
+    path("processes/stop/confirm/", vx.ProcessStopConfirmView.as_view(), name="api-stop-confirm"),
+    path(
+        "processes/stop/operations/<str:op_id>/",
+        vx.ProcessStopOperationView.as_view(),
+        name="api-stop-operation",
+    ),
+    path("control/", vx.ControlStatusView.as_view(), name="api-control"),
     path("containers/", views.ContainerListView.as_view(), name="api-containers"),
     path("containers/<str:ref>/", views.ContainerDetailView.as_view(), name="api-container"),
     path("services/", views.ServiceListView.as_view(), name="api-services"),
