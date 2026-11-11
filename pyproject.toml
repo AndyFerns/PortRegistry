@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.24"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,8 +7,10 @@ name = "portregistry"
 dynamic = ["version"]
 description = "Local-first, cross-platform port discovery and service registry"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
-authors = [{ name = "PortRegistry contributors" }]
+authors = [{ name = "AndyFerns" }]
 keywords = ["ports", "sockets", "service-registry", "psutil", "devtools", "homelab"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -37,6 +39,13 @@ dependencies = [
     "textual>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/AndyFerns/PortRegistry"
+Source = "https://github.com/AndyFerns/PortRegistry"
+Issues = "https://github.com/AndyFerns/PortRegistry/issues"
+Changelog = "https://github.com/AndyFerns/PortRegistry/releases"
+Security = "https://github.com/AndyFerns/PortRegistry/security/policy"
+
 [project.optional-dependencies]
 docker = ["docker>=7.1"]
 tray = ["pystray>=0.19", "Pillow>=10.0"]
@@ -61,7 +70,7 @@ path = "src/portregistry/__init__.py"
 packages = ["src/portregistry"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/portregistry", "tests", "README.md", "pyproject.toml"]
+include = ["src/portregistry", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "portregistry.django_app.settings"

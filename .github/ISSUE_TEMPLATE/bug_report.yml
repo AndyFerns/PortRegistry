@@ -1,0 +1,91 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security problems: do not file them here.** Use the private reporting link on the issue chooser page, or see SECURITY.md.
+        Please remove anything private (tokens, hostnames, command lines with secrets) before pasting output.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. portregistry daemon start
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Where did you see it?
+      options:
+        - CLI
+        - Web GUI
+        - TUI
+        - Daemon / API
+        - Docker discovery
+        - Process stopping
+        - Install / packaging
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PortRegistry version
+      description: Output of `portregistry version`.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: osversion
+    attributes:
+      label: OS and Python version
+      placeholder: "Windows 11, Python 3.12.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - pip / pipx from PyPI
+        - pip from GitHub or a wheel
+        - Standalone bundle (executable)
+        - From source (editable install)
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `portregistry doctor`
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines or errors
+      description: The daemon log is in the logs folder of your PortRegistry home.
+      render: text
+    validations:
+      required: false

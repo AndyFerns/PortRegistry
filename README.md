@@ -29,11 +29,11 @@ It has three interfaces, all backed by one local daemon:
 
 - **TUI:** dashboard, ports (with search), services, reservations, conflicts, machines, history and settings, plus details and forms.
 
-![TUI](/docs/assets/tui.png)
+![TUI](https://raw.githubusercontent.com/AndyFerns/PortRegistry/master/docs/assets/tui.png)
 
 - **CLI:** every workflow, with table, JSON and CSV output.
 
-![CLI](/docs/assets/cli.png)
+![CLI](https://raw.githubusercontent.com/AndyFerns/PortRegistry/master/docs/assets/cli.png)
 
 ```text
  Browser (GUI) ──┐   session + CSRF
@@ -647,7 +647,6 @@ Overlap rules for the same protocol and port:
   - service dependency graphs;
   - a separate `DockerNetwork` table (network data is stored as JSON on the container);
   - native fallbacks (Windows IP Helper, `/proc`).
-- **No LICENSE file yet.** The licence is for the project owner to choose.
 
 ---
 
@@ -672,3 +671,11 @@ python -m django makemigrations portregistry --settings=portregistry.django_app.
 ```
 
 CI is defined in `.github/workflows/ci.yml`. It runs lint and type checks, tests on Ubuntu, Windows and macOS with Python 3.12 and 3.13, a Docker-required live job on Ubuntu, a package build with wheel and pipx smoke tests, and PyInstaller bundles for all three OSes (each smoke-tested by starting and stopping the daemon).
+
+---
+
+## Contributing, security and licence
+
+- Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Please report security problems privately, as described in [SECURITY.md](SECURITY.md).
+- PortRegistry is licensed under the [Apache License 2.0](LICENSE).
