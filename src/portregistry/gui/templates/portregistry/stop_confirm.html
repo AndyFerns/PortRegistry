@@ -1,0 +1,23 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Confirm stop{% endblock %}
+{% block heading %}Confirm: stop {{ a.identity.name|default:"?" }} <span class="muted small">PID {{ a.identity.pid }}</span>{% endblock %}
+{% block content %}
+<div class="alert warn">This cannot be undone. Unsaved work in this process{% if a.mode == "tree" %} and its children{% endif %} may be lost. This confirmation expires {{ issued.expires_in }} seconds after it was issued.</div>
+{% include "portregistry/partials/stop_assessment.html" %}
+<section class="card" style="margin-top:14px">
+  <h2>Step 2 of 2</h2>
+  <form method="post" action="/processes/stop/confirm/" autocomplete="off">
+    {% csrf_token %}
+    <input type="hidden" name="code" value="{{ issued.code }}">
+    <input type="hidden" name="process_id" value="{{ a.identity.process_id }}">
+    <div class="form-grid">
+      <label for="f-pid">Type the PID <strong class="mono">{{ a.identity.pid }}</strong> to confirm</label>
+      <div><input id="f-pid" name="pid" inputmode="numeric" pattern="[0-9]*" required autofocus></div>
+    </div>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn danger" type="submit">{% if a.method == "graceful" %}Stop{% elif a.method == "immediate" %}Stop immediately{% else %}Force-stop{% endif %}{% if a.mode == "tree" %} the whole tree{% endif %}</button>
+      <a class="btn" href="/processes/{{ a.identity.process_id }}/">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

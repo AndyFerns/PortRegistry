@@ -38,7 +38,8 @@ def exception_handler(exc: Exception, context: dict[str, Any]) -> Response | Non
     if isinstance(exc, NotFoundError):
         return Response(error_body(exc.code, exc.message), status=404)
     if isinstance(exc, PortRegistryError):
-        return Response(error_body(exc.code, exc.message, exc.details), status=400)
+        status = int(getattr(exc, "http_status", 400))
+        return Response(error_body(exc.code, exc.message, exc.details), status=status)
     if isinstance(exc, ObjectDoesNotExist | Http404):
         exc = drf.NotFound()
 

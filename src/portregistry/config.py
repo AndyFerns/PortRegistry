@@ -67,6 +67,24 @@ noise_retention_days = 3
 [logging]
 level = "INFO"
 
+[control]
+# Stopping processes from PortRegistry ("Stop process") is OFF by default.
+# When enabled, the GUI, CLI and TUI can stop the process that owns a port after a
+# two-step confirmation (review, then type the PID within 30 seconds). Every
+# attempt, allowed or refused, is recorded in history. There is no undo.
+# Never stopped: PortRegistry itself and its parents, PIDs 0/1/4, system and
+# service processes, root/SYSTEM-owned processes, and Docker's port proxies
+# (use `docker stop <container>` for containers). Control is forced off when the
+# daemon listens on a non-loopback address.
+enabled = false
+# Only your own processes can be stopped. Setting this to true allows stopping
+# other users' processes, and only takes effect while the daemon itself runs
+# elevated (Administrator/root). Leave it off unless you really need it.
+allow_other_users = false
+# How long a graceful stop waits for the process to exit (2-60 seconds). A
+# process that does not exit is never force-stopped automatically.
+grace_seconds = 10
+
 # Alerts: POST a JSON payload to your own endpoints when conflicts appear or are
 # resolved. Disabled unless at least one webhook is configured. Example:
 #
@@ -119,6 +137,10 @@ ALERT_EVENTS = (
     "docker.unavailable",
     "docker.available",
     "scan.failed",
+    "process.stopped",
+    "process.stop_refused",
+    "process.stop_failed",
+    "process.stop_timeout",
     "alert.test",
 )
 SEVERITY_RANK = {"info": 0, "warning": 1, "error": 2}
@@ -146,6 +168,15 @@ class AlertsConfig:
 
 
 @dataclass(frozen=True)
+class ControlConfig:
+    """Opt-in process control ("Stop process")."""
+
+    enabled: bool = False
+    allow_other_users: bool = False
+    grace_seconds: float = 10.0
+
+
+@dataclass(frozen=True)
 class Config:
     paths: AppPaths
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
@@ -154,6 +185,7 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     noise: NoiseConfig = field(default_factory=NoiseConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
+    control: ControlConfig = field(default_factory=ControlConfig)
 
     @property
     def base_url(self) -> str:
@@ -173,6 +205,7 @@ class Config:
             "logging": asdict(self.logging),
             "noise": asdict(self.noise),
             "alerts": {"webhooks": [w.public_dict() for w in self.alerts.webhooks]},
+            "control": asdict(self.control),
             "paths": self.paths.as_dict(),
         }
 
@@ -201,7 +234,7 @@ def _expect(section: dict[str, Any], key: str, kinds: tuple[type, ...], default:
 
 def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
     """Validate a raw TOML mapping and build a :class:`Config`."""
-    for name in ("daemon", "discovery", "history", "logging", "noise", "alerts"):
+    for name in ("daemon", "discovery", "history", "logging", "noise", "alerts", "control"):
         if name in raw and not isinstance(raw[name], dict):
             raise ConfigError(f"Configuration section [{name}] must be a table.")
     d = raw.get("daemon", {})
@@ -259,6 +292,7 @@ def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
 
     noise = _parse_noise(raw.get("noise", {}))
     alerts = _parse_alerts(raw.get("alerts", {}))
+    control = _parse_control(raw.get("control", {}))
 
     return Config(
         paths=paths,
@@ -276,6 +310,7 @@ def parse_config(raw: dict[str, Any], paths: AppPaths) -> Config:
         logging=LoggingConfig(level=level),
         noise=noise,
         alerts=alerts,
+        control=control,
     )
 
 
@@ -290,6 +325,17 @@ def _parse_noise(section: dict[str, Any]) -> NoiseConfig:
         ephemeral_udp=bool(_expect(section, "ephemeral_udp", (bool,), True)),
         flap_window_seconds=flap,
         noise_retention_days=keep,
+    )
+
+
+def _parse_control(section: dict[str, Any]) -> ControlConfig:
+    grace = float(_expect(section, "grace_seconds", (int, float), 10))
+    if not 2 <= grace <= 60:
+        raise ConfigError("control.grace_seconds must be between 2 and 60.")
+    return ControlConfig(
+        enabled=bool(_expect(section, "enabled", (bool,), False)),
+        allow_other_users=bool(_expect(section, "allow_other_users", (bool,), False)),
+        grace_seconds=grace,
     )
 
 

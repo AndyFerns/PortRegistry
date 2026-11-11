@@ -35,6 +35,7 @@ from portregistry.services.conflict_store import active_conflicts
 from portregistry.services.diagnostics import elevation_hint
 from portregistry.services.history import query_events
 from portregistry.services.machines import get_local_machine
+from portregistry.services.process_control import control_state
 from portregistry.services.registry import SUGGESTED_CATEGORIES
 
 PORTS_PAGE = 300
@@ -227,6 +228,7 @@ def port_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "siblings": Socket.objects.filter(machine=sock.machine, port=sock.port, active=True)
         .exclude(pk=sock.pk)
         .select_related("process"),
+        "control": control_state(),
     }
     return render(request, "portregistry/port_detail.html", context)
 
@@ -254,6 +256,7 @@ def process_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "children": ProcessInstance.objects.filter(machine=proc.machine, ppid=proc.pid, active=True)
         .exclude(pk=proc.pk)
         .order_by("name"),
+        "control": control_state(),
     }
     return render(request, "portregistry/process_detail.html", context)
 

@@ -68,6 +68,19 @@
     <p class="small muted">Ignore rules: <a href="/settings/ignore/">manage</a>. Rotate the API token with <code>portregistry token rotate</code>.</p>
   </section>
 </div>
+<section class="card" style="margin-top:14px">
+  <h2>Stopping processes</h2>
+  {% with c=status.control %}
+  {% if c.enabled %}
+    <p><span class="badge sev-warning">on</span> Your own processes can be stopped after a two-step confirmation (review, then type the PID within {{ c.code_ttl_seconds }} seconds). Graceful stops wait up to {{ c.grace_seconds|floatformat:0 }} seconds. Every attempt is recorded in <a href="/history/?type=process.stop">history</a>.</p>
+    {% if c.allow_other_users %}<div class="alert error small"><strong>Other users' processes can be stopped.</strong> {{ c.other_users_note }}</div>{% elif c.other_users_note %}<p class="small muted">{{ c.other_users_note }}</p>{% endif %}
+  {% else %}
+    <p><span class="badge">off</span> {{ c.reason }}</p>
+    {% if c.other_users_note %}<p class="small muted">{{ c.other_users_note }}</p>{% endif %}
+    <p class="small muted">While off, the Stop pages only show the commands to stop a process yourself.</p>
+  {% endif %}
+  {% endwith %}
+</section>
 {% endif %}
 <section class="card" style="margin-top:14px">
   <h2>Recent scans</h2>

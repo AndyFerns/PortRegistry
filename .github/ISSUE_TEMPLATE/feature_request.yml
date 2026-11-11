@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PortRegistry is local-first and cautious by design (see the ground rules in CONTRIBUTING.md). Ideas that need the daemon to run commands, collect environment variables, elevate privileges or reach the network are unlikely to be accepted.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Which interface is affected?
+      multiple: true
+      options:
+        - CLI
+        - Web GUI
+        - TUI
+        - Daemon / API
+        - Docker discovery
+        - Packaging / install
+    validations:
+      required: false
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - label: I am willing to open a pull request for this

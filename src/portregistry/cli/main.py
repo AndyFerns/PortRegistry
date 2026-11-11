@@ -8,7 +8,14 @@ import webbrowser
 import typer
 
 from portregistry import __version__
-from portregistry.cli import admin_cmds, inspect_cmds, manifest_cmds, registry_cmds, tools_cmds
+from portregistry.cli import (
+    admin_cmds,
+    control_cmds,
+    inspect_cmds,
+    manifest_cmds,
+    registry_cmds,
+    tools_cmds,
+)
 from portregistry.cli.common import get_client, output_option
 from portregistry.cli.daemon_cmds import daemon_app
 from portregistry.cli.output import OutputFormat, console, emit, err_console, esc
@@ -49,6 +56,7 @@ app.command("who")(tools_cmds.who)
 app.command("free")(tools_cmds.free)
 app.command("adopt")(tools_cmds.adopt)
 app.command("timeline")(tools_cmds.timeline)
+app.command("stop")(control_cmds.stop)
 app.command("doctor")(admin_cmds.doctor)
 app.command("apply")(manifest_cmds.apply)
 app.command("export")(manifest_cmds.export)

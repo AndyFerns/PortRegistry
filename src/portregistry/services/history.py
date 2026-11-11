@@ -113,6 +113,20 @@ def alert_for(spec: EventSpec) -> tuple[str, dict[str, Any]] | None:
         return spec.type, {**base, "severity": severity, **spec.details}
     if spec.type in ("docker.unavailable", "docker.available"):
         return spec.type, {**base, "severity": spec.severity, **spec.details}
+    if spec.type in (
+        "process.stopped",
+        "process.stop_refused",
+        "process.stop_failed",
+        "process.stop_timeout",
+    ):
+        # Webhooks get the who/what/outcome, not command lines (they may hold secrets).
+        details = {k: v for k, v in spec.details.items() if k != "members"}
+        identity = details.get("identity")
+        if isinstance(identity, dict):
+            details["identity"] = {
+                k: v for k, v in identity.items() if k not in ("cmdline", "cwd", "exe")
+            }
+        return spec.type, {**base, "severity": spec.severity, **details}
     if spec.type == "scan.status_changed" and spec.details.get("current") == "failed":
         return "scan.failed", {**base, "severity": "warning", **spec.details}
     return None

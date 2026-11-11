@@ -20,7 +20,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
 
 from portregistry import __version__
-from portregistry.client import AsyncApiClient
+from portregistry.client import AsyncApiClient, control_headers
 from portregistry.tui.screens import (
     AdoptScreen,
     ConfirmScreen,
@@ -28,6 +28,7 @@ from portregistry.tui.screens import (
     HelpScreen,
     ReservationFormScreen,
     ServiceFormScreen,
+    StopScreen,
     format_error,
     plain,
 )
@@ -101,6 +102,7 @@ class PortRegistryApp(App[None]):
         Binding("z", "toggle_noise", "History noise", show=False),
         Binding("k", "mark_known", "Mark known", show=False),
         Binding("s", "adopt", "Register as service", show=False),
+        Binding("X", "stop_process", "Stop process", show=False),
         Binding("question_mark", "help", "Help"),
         *[
             Binding(str(i + 1), f"show_tab('{tab}')", tab.title(), show=False)
@@ -523,6 +525,44 @@ class PortRegistryApp(App[None]):
                 self.refresh_data()
 
         self.push_screen(AdoptScreen(self.client, proposal), done)
+
+    def action_stop_process(self) -> None:
+        item = self._selected_port()
+        if item is None:
+            return
+        process = item.get("process") or {}
+        if not process.get("id"):
+            self.notify("The owner of this endpoint is unknown.", severity="warning")
+            return
+        self._stop_process(int(process["id"]))
+
+    @work
+    async def _stop_process(self, process_id: int) -> None:
+        headers = control_headers("tui")
+        try:
+            preview = await self.client.request(
+                "GET",
+                f"processes/{process_id}/stop/preview/",
+                params={"mode": "process"},
+                headers=headers,
+            )
+        except Exception as exc:
+            self.notify(format_error(exc), severity="error")
+            return
+
+        def done(op: dict[str, Any] | None) -> None:
+            if not op:
+                return
+            outcome = op.get("outcome")
+            severity = (
+                "information"
+                if outcome == "stopped"
+                else ("warning" if outcome == "timeout" else "error")
+            )
+            self.notify(str(op.get("message") or outcome), severity=severity)
+            self.refresh_data()
+
+        self.push_screen(StopScreen(self.client, preview, headers), done)
 
     def action_toggle_info(self) -> None:
         self._show_info = not self._show_info

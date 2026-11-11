@@ -29,11 +29,11 @@ It has three interfaces, all backed by one local daemon:
 
 - **TUI:** dashboard, ports (with search), services, reservations, conflicts, machines, history and settings, plus details and forms.
 
-![TUI](/docs/assets/tui.png)
+![TUI](https://raw.githubusercontent.com/AndyFerns/PortRegistry/master/docs/assets/tui.png)
 
 - **CLI:** every workflow, with table, JSON and CSV output.
 
-![CLI](/docs/assets/cli.png)
+![CLI](https://raw.githubusercontent.com/AndyFerns/PortRegistry/master/docs/assets/cli.png)
 
 ```text
  Browser (GUI) ──┐   session + CSRF
@@ -450,6 +450,56 @@ Configuration keys and their defaults:
 
 ---
 
+## Stopping processes (opt-in)
+
+PortRegistry can stop the process that owns a port. This is **off by default** and
+changes the original PRD, which listed killing processes as a non-goal: it is now an
+opt-in feature with the constraints below. **A stop cannot be undone.**
+
+Turn it on in `config.toml` and restart the daemon:
+
+```toml
+[control]
+enabled = true            # off by default
+allow_other_users = false # only takes effect when the daemon runs elevated
+grace_seconds = 10        # how long a graceful stop waits (2-60)
+```
+
+* **Own processes only.** Never stopped: PortRegistry itself and its parents, the
+  program making the request and its parents, PIDs 0/1/4, kernel threads, Windows
+  services, critical system programs, and root/SYSTEM-owned processes. Other users'
+  processes need `allow_other_users = true` **and** an elevated daemon.
+* **Two steps everywhere.** Review shows the command line, folder, parent chain,
+  stop method, ports and registered services affected. Continuing issues a
+  single-use code, valid for 30 seconds and bound to that exact process (PID +
+  creation time). You confirm by typing the PID. There is no `--yes`, and the CLI
+  refuses to stop anything without an interactive terminal.
+* **Graceful first, labelled honestly.** POSIX: SIGTERM. Windows: WM_CLOSE for
+  programs with a window; console programs can only be ended at once and are
+  labelled "immediate stop". A process that ignores a graceful stop is never
+  force-stopped automatically; choose the forced stop explicitly.
+* **Tree mode** (`--tree`, "Whole tree") lists every child first and refuses if any
+  member is protected. Children are stopped before the parent.
+* **Docker and services are not stopped.** For a container, the exact
+  `docker stop <name>` command is shown instead.
+* **Do it yourself instead.** Every Stop page and `portregistry stop --show-command`
+  prints the `kill`/`taskkill` commands; this works even while control is off.
+* **Audited.** Every attempt, allowed or refused, is recorded in history
+  (`portregistry history --type process.stop`), with who asked (GUI/CLI/TUI/API),
+  the process identity, the method and the result. Webhooks can receive
+  `process.stopped`, `process.stop_refused`, `process.stop_failed` and
+  `process.stop_timeout` (without command lines).
+* Control is **forced off** whenever the daemon listens on a non-loopback address.
+
+```bash
+portregistry stop 3000                 # review, then type the PID
+portregistry stop --pid 4242 --tree    # the process and all of its children
+portregistry stop 3000 --show-command  # print the commands only
+```
+
+In the GUI use "Stop…" on a port or process page; in the TUI press `X` on the
+Ports tab.
+
 ## Permissions and visibility
 
 PortRegistry **never elevates privileges** (no sudo, no UAC). It never reads process environment variables and never executes discovered command lines.
@@ -597,7 +647,6 @@ Overlap rules for the same protocol and port:
   - service dependency graphs;
   - a separate `DockerNetwork` table (network data is stored as JSON on the container);
   - native fallbacks (Windows IP Helper, `/proc`).
-- **No LICENSE file yet.** The licence is for the project owner to choose.
 
 ---
 
@@ -622,3 +671,11 @@ python -m django makemigrations portregistry --settings=portregistry.django_app.
 ```
 
 CI is defined in `.github/workflows/ci.yml`. It runs lint and type checks, tests on Ubuntu, Windows and macOS with Python 3.12 and 3.13, a Docker-required live job on Ubuntu, a package build with wheel and pipx smoke tests, and PyInstaller bundles for all three OSes (each smoke-tested by starting and stopping the daemon).
+
+---
+
+## Contributing, security and licence
+
+- Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Please report security problems privately, as described in [SECURITY.md](SECURITY.md).
+- PortRegistry is licensed under the [Apache License 2.0](LICENSE).

@@ -161,6 +161,7 @@ def _run_locked(config: Config, paths: AppPaths, token: str, lock: DaemonLock) -
     app.bus.add_listener(app.alerts.on_bus_event)
     app.alerts.start()
     set_application(app)
+    _log_control_state(config, app.platform_info.get("elevated"))
 
     machine = ensure_local_machine(machine_uuid)
     logger.info("Machine %s (%s)", machine.hostname, machine.uuid)
@@ -260,3 +261,32 @@ def _shutdown(
         set_machine_online(machine, False, reason="daemon shutdown")
     except Exception:
         logger.exception("Could not record daemon shutdown")
+
+
+def _log_control_state(config: Config, elevated: bool | None) -> None:
+    """Make the process-control posture visible in the daemon log at startup."""
+    ctl = config.control
+    if not ctl.enabled:
+        logger.info("Process control (Stop process) is off")
+        return
+    if not is_loopback_host(config.daemon.host):
+        logger.warning(
+            "Process control is configured but FORCED OFF: the daemon listens on a "
+            "non-loopback address (%s)",
+            config.daemon.host,
+        )
+        return
+    logger.warning(
+        "Process control is ON: your own processes can be stopped from the GUI, CLI and TUI "
+        "after a two-step confirmation. Every attempt is recorded in history."
+    )
+    if ctl.allow_other_users and elevated is True:
+        logger.warning(
+            "SECURITY WARNING: the daemon is elevated and [control] allow_other_users = true. "
+            "OTHER USERS' processes can be stopped by anyone holding the API token or a "
+            "browser session. Turn this off unless you need it."
+        )
+    elif ctl.allow_other_users:
+        logger.warning(
+            "[control] allow_other_users is set but ignored because the daemon is not elevated"
+        )

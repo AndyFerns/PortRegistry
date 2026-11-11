@@ -1,0 +1,44 @@
+{% load pr_format %}
+<div class="grid grid-2">
+  <section class="card">
+    <h2>What will be stopped</h2>
+    <dl class="kv">
+      <dt>Process</dt><dd>{{ a.identity.name|default:"?" }} <span class="mono small">PID {{ a.identity.pid }}</span>{% if a.identity.process_id %} <a class="small" href="/processes/{{ a.identity.process_id }}/">details</a>{% endif %}</dd>
+      <dt>Command line</dt><dd class="mono small">{% if a.target %}{{ a.target.cmdline|cmdline|default:"—" }}{% else %}{{ a.identity.cmdline|cmdline|default:"—" }}{% endif %}</dd>
+      <dt>Folder</dt><dd class="mono small">{% if a.target %}{{ a.target.cwd|default:"—" }}{% else %}{{ a.identity.cwd|default:"—" }}{% endif %}</dd>
+      <dt>User</dt><dd>{% if a.target %}{{ a.target.username|default:"—" }}{% else %}{{ a.identity.username|default:"—" }}{% endif %}</dd>
+      <dt>Started by</dt><dd>{% for p in a.parent_chain reversed %}{{ p.name|default:"?" }} <span class="mono small">{{ p.pid }}</span>{% if p.protected %} <span class="badge">protected</span>{% endif %} → {% empty %}<span class="muted">unknown</span> → {% endfor %}<strong>this process</strong></dd>
+      <dt>Mode</dt><dd>{% if a.mode == "tree" %}<strong>The whole tree</strong> ({{ a.impact.processes }} process{{ a.impact.processes|pluralize:"es" }}){% else %}This process only{% endif %}</dd>
+      <dt>How</dt><dd>{% if a.method_label %}<span class="badge {% if a.graceful %}st-ok{% else %}sev-warning{% endif %}">{{ a.method }}</span> {{ a.method_label }}{% else %}—{% endif %}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Impact</h2>
+    <dl class="kv">
+      <dt>Ports freed</dt><dd class="mono small">{{ a.impact.ports|join:", "|default:"none observed" }}</dd>
+      <dt>Services</dt><dd>{% for s in a.impact.services %}<div>{{ s }}</div>{% empty %}<span class="muted">No registered service is affected.</span>{% endfor %}</dd>
+    </dl>
+    {% for w in a.warnings %}<div class="alert warn small" style="margin-top:8px">{{ w }}</div>{% endfor %}
+    {% for r in a.reasons %}<div class="alert error small" style="margin-top:8px">Refused: {{ r }}</div>{% endfor %}
+  </section>
+</div>
+{% if a.mode == "tree" or a.members|length > 1 %}
+<section class="card" style="margin-top:14px">
+  <h2>Stop order (children first)</h2>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Process</th><th>PID</th><th>User</th><th>How</th><th>Ports</th><th>Services</th><th>Status</th></tr></thead>
+    <tbody>{% for m in a.members %}
+      <tr><td>{% if m.depth %}<span class="muted">↳ </span>{% endif %}{% if m.process_id %}<a href="/processes/{{ m.process_id }}/">{{ m.name|default:"?" }}</a>{% else %}{{ m.name|default:"?" }}{% endif %}{% if m.depth == 0 %} <span class="badge">target</span>{% endif %}</td>
+        <td class="mono">{{ m.pid }}</td><td>{{ m.username|default:"—" }}</td><td>{{ m.method }}</td>
+        <td class="mono small">{{ m.ports|join:", "|default:"—" }}</td><td class="small">{{ m.services|join:"; "|default:"—" }}</td>
+        <td>{% if m.refusals %}<span class="badge sev-error" title="{{ m.refusals|join:' ' }}">protected</span>{% else %}<span class="badge st-ok">ok</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+<section class="card" style="margin-top:14px">
+  <h2>Do it yourself instead</h2>
+  {% for d in a.docker %}<p>{% if d.container %}Container <strong>{{ d.container }}</strong> publishes {{ d.port }}.{% else %}Find the container publishing this port:{% endif %}</p><pre>{{ d.command }}</pre>{% endfor %}
+  {% for c in a.commands %}<p class="small muted" style="margin:8px 0 4px">{{ c.label }}</p><pre>{{ c.command }}</pre>{% endfor %}
+  {% if a.command_note %}<p class="small muted" style="margin-top:8px">{{ a.command_note }}</p>{% endif %}
+</section>

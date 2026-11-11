@@ -323,6 +323,7 @@ def dashboard_summary(machine: Machine, app: Application | None = None) -> dict[
 
 def status_payload(app: Application, machine: Machine) -> dict[str, Any]:
     from portregistry.django_app.api.serializers import machine_dict, scan_dict
+    from portregistry.services.process_control import control_state
 
     last = latest_scan(machine)
     last_docker = latest_scan(machine, "docker")
@@ -358,4 +359,5 @@ def status_payload(app: Application, machine: Machine) -> dict[str, Any]:
             "retention_days": app.config.history.retention_days,
             "collect_cmdline": app.config.discovery.collect_cmdline,
         },
+        "control": control_state(app.config, elevated=app.platform_info.get("elevated")),
     }

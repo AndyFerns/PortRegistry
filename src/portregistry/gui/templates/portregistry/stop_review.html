@@ -1,0 +1,37 @@
+{% extends "portregistry/base.html" %}
+{% block title %}Stop {{ a.identity.name|default:"process" }}{% endblock %}
+{% block heading %}Stop {{ a.identity.name|default:"?" }} <span class="muted small">PID {{ a.identity.pid }}</span>{% endblock %}
+{% block content %}
+{% if error %}<div class="alert error">Nothing was stopped: {{ error }}</div>{% endif %}
+{% if not a.control_enabled %}
+  <div class="alert info">{{ a.control.reason }} Until then you can use the commands below.</div>
+{% endif %}
+<div class="actions" style="margin-bottom:12px">
+  <span class="small muted">Review:</span>
+  <a class="btn small{% if a.mode == 'process' and not a.force %} primary{% endif %}" href="?mode=process">This process only</a>
+  <a class="btn small{% if a.mode == 'tree' and not a.force %} primary{% endif %}" href="?mode=tree">Whole tree</a>
+  <a class="btn small{% if a.force %} primary{% endif %}" href="?mode={{ a.mode }}&amp;force=1" title="SIGKILL / TerminateProcess: no cleanup">Forced stop</a>
+</div>
+{% include "portregistry/partials/stop_assessment.html" %}
+<section class="card" style="margin-top:14px">
+  <h2>Step 1 of 2</h2>
+  {% if a.can_request %}
+    <p>PortRegistry checks the process again and gives you <strong>{{ a.control.code_ttl_seconds }} seconds</strong> to confirm by typing its PID. There is no undo.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="mode" value="{{ a.mode }}">
+      {% if a.force %}<input type="hidden" name="force" value="1">{% endif %}
+      <div class="actions">
+        <button class="btn danger" type="submit">Continue to confirmation</button>
+        <a class="btn" href="/processes/{{ a.identity.process_id }}/">Cancel</a>
+      </div>
+    </form>
+  {% elif a.control_enabled %}
+    <p class="muted">PortRegistry will not stop this process (see the reasons above).</p>
+    <a class="btn" href="/processes/{{ a.identity.process_id }}/">Back</a>
+  {% else %}
+    <p class="muted">Stopping from PortRegistry is off.</p>
+    <a class="btn" href="/processes/{{ a.identity.process_id }}/">Back</a>
+  {% endif %}
+</section>
+{% endblock %}

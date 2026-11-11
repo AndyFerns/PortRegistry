@@ -22,6 +22,7 @@ from portregistry.services import (
     free_ports,
     ignore_rules,
     preferences,
+    process_control,
     reservations,
     timeline,
 )
@@ -310,3 +311,72 @@ def saved_filter_links(machine: Any, page: str) -> list[dict[str, Any]]:
 
 def querystring_without(request: HttpRequest, *drop: str) -> str:
     return urlencode([(k, v) for k, v in request.GET.items() if k not in drop and v])
+
+
+# ------------------------------------------------------------- process control
+
+
+def _stop_params(source: Any) -> tuple[str, bool]:
+    mode = "tree" if source.get("mode") == "tree" else "process"
+    force = str(source.get("force") or "") in ("1", "true", "on")
+    return mode, force
+
+
+@gui_login_required
+@require_http_methods(["GET", "POST"])
+def stop_review(request: HttpRequest, pk: int) -> HttpResponse:
+    """Review page (GET) and step 1 of the two-step stop (POST issues a 30 s code)."""
+    source = request.POST if request.method == "POST" else request.GET
+    mode, force = _stop_params(source)
+    error = None
+    if request.method == "POST":
+        try:
+            issued = process_control.request_stop(pk, mode=mode, force=force, actor="gui")
+        except NotFoundError as exc:
+            raise Http404(str(exc)) from exc
+        except process_control.ControlError as exc:
+            error = exc.message
+        else:
+            return render(
+                request,
+                "portregistry/stop_confirm.html",
+                {"issued": issued, "a": issued["assessment"]},
+            )
+    try:
+        data = process_control.preview(pk, mode=mode, force=force)
+    except NotFoundError as exc:
+        raise Http404(str(exc)) from exc
+    return render(request, "portregistry/stop_review.html", {"a": data, "error": error})
+
+
+@gui_login_required
+@require_POST
+def stop_confirm(request: HttpRequest) -> HttpResponse:
+    """Step 2: the code plus the PID typed by the user."""
+    process_id = request.POST.get("process_id", "")
+    try:
+        op = process_control.confirm_stop(
+            request.POST.get("code", ""), pid=request.POST.get("pid", ""), actor="gui"
+        )
+    except NotFoundError as exc:
+        raise Http404(str(exc)) from exc
+    except process_control.ControlError as exc:
+        messages.error(request, f"Nothing was stopped: {exc.message}")
+        if process_id.isdigit():
+            return redirect("gui-process-stop", pk=int(process_id))
+        return redirect("gui-ports")
+    return redirect("gui-stop-operation", op_id=op["id"])
+
+
+@gui_login_required
+def stop_operation(request: HttpRequest, op_id: str) -> HttpResponse:
+    try:
+        op = process_control.get_operation(op_id)
+    except NotFoundError as exc:
+        raise Http404(str(exc)) from exc
+    template = (
+        "portregistry/partials/stop_operation.html"
+        if request.headers.get("HX-Request")
+        else "portregistry/stop_result.html"
+    )
+    return render(request, template, {"op": op})
